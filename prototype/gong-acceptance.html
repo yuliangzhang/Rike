@@ -1,0 +1,479 @@
+<title>Gong 验收清单</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --ground:#E6E8E3; --panel:#FBFBF9; --panel-2:#F1F2EE; --band:#E9EBE5;
+    --line:#D2D6CE; --line-soft:#E3E5DF;
+    --ink:#171B1A; --ink-2:#4B5350; --ink-3:#7B837F;
+    --plan:#40628F; --actual:#2F6B4C; --warn:#A8620A; --stop:#A83A26;
+    --f-disp:"IBM Plex Sans Condensed","Noto Sans SC",-apple-system,"PingFang SC",sans-serif;
+    --f-body:"IBM Plex Sans","Noto Sans SC",-apple-system,"PingFang SC",sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#101413; --panel:#1A1F1E; --panel-2:#212726; --band:#181D1C;
+      --line:#323A38; --line-soft:#282F2E;
+      --ink:#E7EAE8; --ink-2:#A5AEAA; --ink-3:#78817D;
+      --plan:#7FA6D8; --actual:#6FBB90; --warn:#E8A93F; --stop:#E08066;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#101413; --panel:#1A1F1E; --panel-2:#212726; --band:#181D1C;
+    --line:#323A38; --line-soft:#282F2E;
+    --ink:#E7EAE8; --ink-2:#A5AEAA; --ink-3:#78817D;
+    --plan:#7FA6D8; --actual:#6FBB90; --warn:#E8A93F; --stop:#E08066;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--f-body);
+       font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased;padding:0 20px 90px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1,h2,h3{font-family:var(--f-disp);margin:0;line-height:1.25;text-wrap:balance}
+  p{margin:0}
+  code,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+  :focus-visible{outline:2px solid var(--plan);outline-offset:2px}
+
+  header.mast{padding:50px 0 22px;border-bottom:2px solid var(--ink);
+              display:flex;flex-direction:column;gap:14px}
+  .mast-row{display:flex;align-items:baseline;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  .mast h1{font-size:clamp(28px,5vw,40px);font-weight:700;display:flex;align-items:baseline;gap:12px}
+  .mast h1 .g{font-family:var(--f-body);color:var(--plan);font-size:.8em}
+  .stamp{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;
+         text-transform:uppercase;color:var(--ink-3)}
+  .mast p{color:var(--ink-2);max-width:70ch}
+  .mast p strong{color:var(--ink);font-weight:600}
+
+  /* progress */
+  .prog{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+        background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:13px 16px;
+        margin-top:22px;position:sticky;top:0;z-index:5}
+  .prog .n{font-family:var(--f-mono);font-size:24px;font-weight:600;color:var(--actual)}
+  .prog .bar{flex:1 1 200px;height:8px;background:var(--panel-2);
+             border:1px solid var(--line-soft);border-radius:99px;overflow:hidden}
+  .prog .fill{height:100%;background:var(--actual);width:0;transition:width .25s}
+  .prog button{font-family:var(--f-mono);font-size:11px;padding:5px 11px;background:var(--panel-2);
+               border:1px solid var(--line);color:var(--ink);border-radius:4px;cursor:pointer}
+  .prog button:hover{border-color:var(--stop);color:var(--stop)}
+
+  section.sec{padding:40px 0 0;display:flex;flex-direction:column;gap:13px}
+  .sec-head{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap;
+            border-bottom:1px solid var(--line);padding-bottom:8px}
+  .sec-head h2{font-size:19px;font-weight:700}
+  .sec-head .k{font-family:var(--f-mono);font-size:10px;letter-spacing:.13em;
+               text-transform:uppercase;color:var(--ink-3)}
+  .sec-head .done{margin-left:auto;font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+  .lede{color:var(--ink-2);max-width:72ch}
+  .lede strong{color:var(--ink);font-weight:600}
+
+  ul.items{list-style:none;margin:0;padding:0;border:1px solid var(--line);
+           background:var(--panel);border-radius:6px;overflow:hidden}
+  ul.items li+li{border-top:1px solid var(--line-soft)}
+  ul.items label{display:grid;grid-template-columns:20px 46px minmax(0,1fr) minmax(0,1.15fr);
+                 gap:12px;padding:11px 15px;cursor:pointer;align-items:start}
+  @media (max-width:720px){ul.items label{grid-template-columns:20px 46px minmax(0,1fr);}
+                           ul.items .exp{grid-column:3;padding-top:3px}}
+  ul.items input{width:16px;height:16px;margin:3px 0 0;accent-color:var(--actual);cursor:pointer}
+  .id{font-family:var(--f-mono);font-size:11px;color:var(--plan);padding-top:2px}
+  .act{font-size:13.5px}
+  .exp{font-size:12.5px;color:var(--ink-2);line-height:1.55}
+  .exp b{color:var(--ink);font-weight:600}
+  li.checked .act,li.checked .exp{color:var(--ink-3)}
+  li.checked .id{color:var(--ink-3)}
+
+  pre{margin:0;overflow-x:auto;background:var(--panel);border:1px solid var(--line);
+      border-radius:5px;padding:14px 16px;font-family:var(--f-mono);font-size:12.5px;line-height:1.7}
+  .codewrap{position:relative}
+  .copy{position:absolute;top:8px;right:8px;font-family:var(--f-mono);font-size:11px;
+        padding:4px 10px;background:var(--panel-2);border:1px solid var(--line);
+        color:var(--ink);border-radius:4px;cursor:pointer}
+  .copy:hover{border-color:var(--plan);color:var(--plan)}
+
+  .note{border-left:3px solid var(--warn);background:var(--panel);padding:13px 17px;
+        border-radius:0 5px 5px 0;display:flex;flex-direction:column;gap:5px}
+  .note .k{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;
+           text-transform:uppercase;color:var(--warn)}
+  .note.stop{border-left-color:var(--stop)}
+  .note.stop .k{color:var(--stop)}
+  .note p{font-size:13px;color:var(--ink-2)}
+  .note p strong{color:var(--ink);font-weight:600}
+
+  .tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:5px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:560px;font-size:13px}
+  th{text-align:left;font-family:var(--f-mono);font-size:10px;letter-spacing:.11em;
+     text-transform:uppercase;color:var(--ink-3);padding:10px 14px;font-weight:500;
+     border-bottom:1px solid var(--line);background:var(--panel-2);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.55}
+  tr:last-child td{border-bottom:none}
+  td.c{white-space:nowrap;font-family:var(--f-mono);font-size:11.5px}
+
+  footer.foot{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);
+              font-size:12.5px;color:var(--ink-3);display:flex;justify-content:space-between;
+              gap:14px;flex-wrap:wrap}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="mast-row">
+      <h1><span class="g">工</span>Gong 验收清单</h1>
+      <span class="stamp">v1.0 · macOS 14+ · 66 项测试通过</span>
+    </div>
+    <p>
+      每项 2 分钟内可验完。<strong>勾选状态存在本机浏览器</strong>，可以分几次做完。
+      发现问题记下左边的编号告诉我即可。
+    </p>
+  </header>
+
+  <div class="prog">
+    <span class="n"><span id="done">0</span> / <span id="total">0</span></span>
+    <span class="bar"><span class="fill" id="fill"></span></span>
+    <button type="button" id="reset">清空全部勾选</button>
+  </div>
+
+  <!-- 0 安装 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">00</span><h2>安装</h2><span class="done" data-done="s0"></span></div>
+    <div class="codewrap">
+      <button class="copy" type="button" data-copy="install">复制</button>
+      <pre id="install">cd ~/Documents/Gong
+./scripts/build.sh      # 编译 + 组装 .app + ad-hoc 签名
+./scripts/install.sh    # 安装到 /Applications
+open /Applications/Gong.app</pre>
+    </div>
+    <ul class="items" data-sec="s0">
+      <li><label><input type="checkbox" data-k="a1"><span class="id">0.1</span>
+        <span class="act">运行上面三条命令</span>
+        <span class="exp">构建与安装无报错</span></label></li>
+      <li><label><input type="checkbox" data-k="a2"><span class="id">0.2</span>
+        <span class="act">看菜单栏</span>
+        <span class="exp">出现「<b>工</b>」图标</span></label></li>
+      <li><label><input type="checkbox" data-k="a3"><span class="id">0.3</span>
+        <span class="act">看桌面</span>
+        <span class="exp">出现挂件；<b>没有 Dock 图标是设计如此</b>（LSUIElement），主窗口从菜单栏图标进入</span></label></li>
+    </ul>
+    <div class="note">
+      <span class="k">数据位置</span>
+      <p>记录：<code>~/Library/Application Support/com.ybjv.gong/</code>　导出：<code>~/Documents/Work_Records/daily/</code>（可改）</p>
+    </div>
+  </section>
+
+  <!-- 1 工字表 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">01 · P0 核心</span><h2>「工」字表</h2><span class="done" data-done="s1"></span></div>
+    <ul class="items" data-sec="s1">
+      <li><label><input type="checkbox" data-k="b1"><span class="id">1.1</span>
+        <span class="act">打开主窗口 → 工字表</span>
+        <span class="exp">上横 TODO 通栏、中段左右内缩（<b>工字剪影</b>）、下横总结通栏</span></label></li>
+      <li><label><input type="checkbox" data-k="b2"><span class="id">1.2</span>
+        <span class="act">在「新增任务」输入并回车</span>
+        <span class="exp">任务出现在列表</span></label></li>
+      <li><label><input type="checkbox" data-k="b3"><span class="id">1.3</span>
+        <span class="act">点任务左侧标记 → 选「⌂ 下限」</span>
+        <span class="exp">标记变绿色「⌂ 下限」</span></label></li>
+      <li><label><input type="checkbox" data-k="b4"><span class="id">1.4</span>
+        <span class="act">再给<b>另一条</b>任务设「⌂ 下限」</span>
+        <span class="exp"><b>第一条自动降为普通</b>——下限只能有一条，约束写在数据模型里</span></label></li>
+      <li><label><input type="checkbox" data-k="b5"><span class="id">1.5</span>
+        <span class="act">同样测「★ 最重要」</span>
+        <span class="exp">同上，只能有一条</span></label></li>
+      <li><label><input type="checkbox" data-k="b6"><span class="id">1.6</span>
+        <span class="act">勾选任务复选框</span>
+        <span class="exp">文字变灰加删除线；下横状态显示「下限：已完成」</span></label></li>
+      <li><label><input type="checkbox" data-k="b7"><span class="id">1.7</span>
+        <span class="act">「＋ 新增计划」，起始时间框输入 <code>9</code> 回车</span>
+        <span class="exp">显示 <code>09:00</code>。再试 <code>930</code>→<code>09:30</code>；<code>9:30</code>→<code>09:30</code></span></label></li>
+      <li><label><input type="checkbox" data-k="b8"><span class="id">1.8</span>
+        <span class="act">输入非法时间如 <code>abc</code></span>
+        <span class="exp">还原为原值，<b>不静默吞掉</b></span></label></li>
+      <li><label><input type="checkbox" data-k="b9"><span class="id">1.9</span>
+        <span class="act">填几条计划后看 Ribbon</span>
+        <span class="exp">上轨（蓝）出现对应色块，位置与时间对应；红竖线是「现在」；刻度每 2 小时一个</span></label></li>
+      <li><label><input type="checkbox" data-k="b10"><span class="id">1.10</span>
+        <span class="act">中文输入长文本到「触动」栏</span>
+        <span class="exp"><b>光标不跳、不卡顿</b>（本地缓冲隔离了每键写入）</span></label></li>
+      <li><label><input type="checkbox" data-k="b11"><span class="id">1.11</span>
+        <span class="act">点日期左右箭头，再点「今天」或按 ⌘T</span>
+        <span class="exp">前后天数据独立；⌘T 回到今天</span></label></li>
+      <li><label><input type="checkbox" data-k="b12"><span class="id">1.12</span>
+        <span class="act">下横「＋ 拆解一条」，只填前 3 栏</span>
+        <span class="exp">提示「<b>第 04 栏还空着</b>」；填了第 4 栏才变绿——没拆出动作就不算写完</span></label></li>
+    </ul>
+  </section>
+
+  <!-- 2 挂件 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">02 · P0</span><h2>桌面挂件</h2><span class="done" data-done="s2"></span></div>
+    <ul class="items" data-sec="s2">
+      <li><label><input type="checkbox" data-k="c1"><span class="id">2.1</span>
+        <span class="act">看挂件内容</span>
+        <span class="exp">最多 3 条 TODO，顺序 <b>下限 → 最重要 → 其余</b></span></label></li>
+      <li><label><input type="checkbox" data-k="c2"><span class="id">2.2</span>
+        <span class="act">加到 4 条以上</span>
+        <span class="exp">仍只显示 3 条；右上出现中性的 <code>⋯</code>。<b>不显示「还有 N 条」</b>——那是压力不是信息</span></label></li>
+      <li><label><input type="checkbox" data-k="c3"><span class="id">2.3</span>
+        <span class="act">点击挂件</span>
+        <span class="exp">打开主窗口并获得焦点</span></label></li>
+      <li><label><input type="checkbox" data-k="c4"><span class="id">2.4</span>
+        <span class="act">拖动挂件，退出重开</span>
+        <span class="exp">位置保留；内容变多时高度自动适配且<b>不与拖动打架</b></span></label></li>
+      <li><label><input type="checkbox" data-k="c5"><span class="id">2.5</span>
+        <span class="act">打开一个普通窗口盖住挂件</span>
+        <span class="exp">默认「桌面层」下被遮挡，与原生 widget 一致</span></label></li>
+      <li><label><input type="checkbox" data-k="c6"><span class="id">2.6</span>
+        <span class="act">菜单栏 →「把挂件提到最前」</span>
+        <span class="exp">浮到最前 2 秒后回落</span></label></li>
+      <li><label><input type="checkbox" data-k="c7"><span class="id">2.7</span>
+        <span class="act">设置 → 层级改「置顶」</span>
+        <span class="exp">始终可见，不再被遮挡</span></label></li>
+      <li><label><input type="checkbox" data-k="c8"><span class="id">2.8</span>
+        <span class="act">切到另一个 Space</span>
+        <span class="exp">挂件跟随出现</span></label></li>
+      <li><label><input type="checkbox" data-k="c9"><span class="id">2.9</span>
+        <span class="act">全屏一个应用 / 开 Stage Manager</span>
+        <span class="exp">桌面层下<b>可能不可见——这是 macOS 限制，不是 bug</b>；用「置顶」解决</span></label></li>
+      <li><label><input type="checkbox" data-k="c10"><span class="id">2.10</span>
+        <span class="act">多显示器</span>
+        <span class="exp">挂件停在原屏幕</span></label></li>
+    </ul>
+  </section>
+
+  <!-- 3 导出 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">03 · 数据安全</span><h2>Markdown 导出</h2><span class="done" data-done="s3"></span></div>
+    <p class="lede">这一节最重要。<strong>3.4 / 3.5 / 3.6 请务必实测</strong>——它们保护的是你现有的手写工作记录。</p>
+    <ul class="items" data-sec="s3">
+      <li><label><input type="checkbox" data-k="d1"><span class="id">3.1</span>
+        <span class="act">设置 →「立即导出今天」</span>
+        <span class="exp"><code>Work_Records/daily/YYYYMMDD.md</code> 出现，首行是 <code>&lt;!-- gong:generated v1 --&gt;</code></span></label></li>
+      <li><label><input type="checkbox" data-k="d2"><span class="id">3.2</span>
+        <span class="act">再点一次「立即导出」</span>
+        <span class="exp">提示「内容无变化，未写入」——少写一次就少一次风险</span></label></li>
+      <li><label><input type="checkbox" data-k="d3"><span class="id">3.3</span>
+        <span class="act">改点东西再导出</span>
+        <span class="exp">提示「已更新」，文件内容跟着变</span></label></li>
+      <li><label><input type="checkbox" data-k="d4"><span class="id">3.4</span>
+        <span class="act"><b>用编辑器手工改那个 md 文件，再导出</b></span>
+        <span class="exp"><b>原文件一字不动</b>，另存为 <code>*.gong-conflict.md</code>，并有黄色提示</span></label></li>
+      <li><label><input type="checkbox" data-k="d5"><span class="id">3.5</span>
+        <span class="act">再改再导出一次</span>
+        <span class="exp">生成 <code>*.gong-conflict-1.md</code>，<b>旧冲突文件也不被覆盖</b></span></label></li>
+      <li><label><input type="checkbox" data-k="d6"><span class="id">3.6</span>
+        <span class="act">检查 <code>Work_Records/20260519_records.md</code> 等手写文件</span>
+        <span class="exp"><b>完全没被碰过</b>——导出走 <code>daily/</code> 子目录，且无生成标记的文件一律不碰</span></label></li>
+      <li><label><input type="checkbox" data-k="d7"><span class="id">3.7</span>
+        <span class="act">打开导出的 md</span>
+        <span class="exp">无 ✓、无 ⚠、无感叹号；状态写「已完成 / 未记录」</span></label></li>
+    </ul>
+    <div class="note stop">
+      <span class="k">一件我必须说清楚的事</span>
+      <p>设计文档里我原本写导出「<strong>绝不覆盖</strong>」。codex 两轮审查都指出这条<strong>做不到绝对成立</strong>：
+      POSIX 没有「校验内容并替换文件」的原子操作，<code>flock</code> 只是劝告锁，管不住任意外部编辑器。</p>
+      <p>我把窗口压到了几十微秒（内容先写进临时文件并 fsync，锁内只做「复核 hash + rename」两步），
+      并把自动导出默认关掉。但<strong>残余竞态是真实存在的，我不打算说成已解决</strong>。
+      你现有的手写文件是安全的（3.6 有测试守着），风险只存在于 Gong 自己生成的那些文件上。</p>
+    </div>
+  </section>
+
+  <!-- 4 监控 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">04 · P1</span><h2>使用时长与看板</h2><span class="done" data-done="s4"></span></div>
+    <ul class="items" data-sec="s4">
+      <li><label><input type="checkbox" data-k="e1"><span class="id">4.1</span>
+        <span class="act">切换几个应用十几分钟，回看板</span>
+        <span class="exp">出现各应用时长条形图</span></label></li>
+      <li><label><input type="checkbox" data-k="e2"><span class="id">4.2</span>
+        <span class="act">看四个数：在机 / 专注 / 中性 / 其他</span>
+        <span class="exp">专注绿、其他橙。<b>类别叫「其他」不叫「干扰」</b>——中性不评价</span></label></li>
+      <li><label><input type="checkbox" data-k="e3"><span class="id">4.3</span>
+        <span class="act">设置 → 应用分类，改某个应用类别</span>
+        <span class="exp">看板配色立即跟着变</span></label></li>
+      <li><label><input type="checkbox" data-k="e4"><span class="id">4.4</span>
+        <span class="act">离开电脑 5 分钟再回来</span>
+        <span class="exp">空闲时间不计入（默认阈值 180 秒）</span></label></li>
+      <li><label><input type="checkbox" data-k="e5"><span class="id">4.5</span>
+        <span class="act">点开控制中心或 Gong 自己待几分钟</span>
+        <span class="exp">那几分钟<b>不会被算给上一个应用</b>（系统瞬时进程会闭合区间）</span></label></li>
+      <li><label><input type="checkbox" data-k="e6"><span class="id">4.6</span>
+        <span class="act">工字表「实际」列点「⟲ 从监控填充」</span>
+        <span class="exp">前台超过 10 分钟的区间被填进实际列</span></label></li>
+      <li><label><input type="checkbox" data-k="e7"><span class="id">4.7</span>
+        <span class="act">设置里关掉「启用监控」</span>
+        <span class="exp"><b>立即</b>停止，不是过一会儿才停</span></label></li>
+      <li><label><input type="checkbox" data-k="e8"><span class="id">4.8</span>
+        <span class="act">全程留意</span>
+        <span class="exp"><b>不应出现任何系统权限弹窗</b></span></label></li>
+    </ul>
+  </section>
+
+  <!-- 5 阻断器 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">05 · P1</span><h2>注意力阻断器</h2><span class="done" data-done="s5"></span></div>
+    <ul class="items" data-sec="s5">
+      <li><label><input type="checkbox" data-k="f1"><span class="id">5.1</span>
+        <span class="act">阻断器页看仪表</span>
+        <span class="exp">「上次中断记录」给的是<b>日期</b>，不是「已坚持 N 天」</span></label></li>
+      <li><label><input type="checkbox" data-k="f2"><span class="id">5.2</span>
+        <span class="act">「记一笔」填触发编号和分钟数</span>
+        <span class="exp">记录出现在列表；仪表更新</span></label></li>
+      <li><label><input type="checkbox" data-k="f3"><span class="id">5.3</span>
+        <span class="act">10 分钟计时器：开始 / 暂停 / 重置</span>
+        <span class="exp">倒数正常</span></label></li>
+      <li><label><input type="checkbox" data-k="f4"><span class="id">5.4</span>
+        <span class="act">阈值改 5 分钟，连续用一个「其他」类应用 5 分钟</span>
+        <span class="exp">右上出现<b>非模态</b>小浮层 + 挂件描边变橙 + 菜单栏图标变「工•」</span></label></li>
+      <li><label><input type="checkbox" data-k="f5"><span class="id">5.5</span>
+        <span class="act">确认没有系统模态弹窗</span>
+        <span class="exp">全程不阻塞你正在做的事</span></label></li>
+      <li><label><input type="checkbox" data-k="f6"><span class="id">5.6</span>
+        <span class="act">合上盖子睡一会儿再打开</span>
+        <span class="exp"><b>不应立刻误报</b>（睡眠时长不算连续前台）</span></label></li>
+      <li><label><input type="checkbox" data-k="f7"><span class="id">5.7</span>
+        <span class="act">浮层点「忽略 30 分钟」</span>
+        <span class="exp">消失，30 分钟内不再提示</span></label></li>
+    </ul>
+  </section>
+
+  <!-- 6 数据安全 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">06</span><h2>退出与隐私</h2><span class="done" data-done="s6"></span></div>
+    <ul class="items" data-sec="s6">
+      <li><label><input type="checkbox" data-k="g1"><span class="id">6.1</span>
+        <span class="act">编辑内容后立刻菜单栏「退出 Gong」，再启动</span>
+        <span class="exp">内容都在（退出走同步落盘，不阻塞主线程）</span></label></li>
+      <li><label><input type="checkbox" data-k="g2"><span class="id">6.2</span>
+        <span class="act">活动监视器强制退出后重启</span>
+        <span class="exp">记录保留到最后一次自动保存；统计标注「按最后心跳截断」</span></label></li>
+      <li><label><input type="checkbox" data-k="g3"><span class="id">6.3</span>
+        <span class="act">设置 → 隐私两项</span>
+        <span class="exp"><b>默认都关闭</b>；导出的 md 里没有应用使用明细</span></label></li>
+      <li><label><input type="checkbox" data-k="g4"><span class="id">6.4</span>
+        <span class="act">打开「导出应用使用明细」再导出</span>
+        <span class="exp">md 里才出现使用时长段落</span></label></li>
+    </ul>
+    <div class="note">
+      <span class="k">为什么这两项默认关</span>
+      <p>导出目录在 <code>Work_Records</code> 下，你有把这个目录<strong>整体喂给 AI 阅读</strong>的习惯，
+      也可能同步云盘。软件使用记录与中断记录是个人行为数据，默认不写进去。</p>
+    </div>
+  </section>
+
+  <!-- 已知限制 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">07</span><h2>已知限制（不是 bug）</h2></div>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>限制</th><th>原因</th><th>怎么办</th></tr></thead>
+        <tbody>
+          <tr><td class="c">Claude Code 统计为 Terminal</td>
+              <td>它运行在终端里，系统层面看不到区别</td>
+              <td>要区分需辅助功能权限读窗口标题，本版本<b>刻意不做也不请求</b></td></tr>
+          <tr><td class="c">全屏 / Stage Manager 下挂件可能不可见</td>
+              <td>Apple 只保证窗口层级的前后关系</td>
+              <td>设置里切「置顶」模式</td></tr>
+          <tr><td class="c">不做网页级识别</td>
+              <td>零权限下做不到，不打算靠猜</td>
+              <td>v1 只按应用分类</td></tr>
+          <tr><td class="c">ad-hoc 签名</td>
+              <td>本机自用，未公证</td>
+              <td>本机构建直接可跑；拷到另一台 Mac 首次需右键→打开</td></tr>
+          <tr><td class="c">无 iCloud 同步</td>
+              <td>v1 单机</td>
+              <td>数据在 Application Support，可自行处理</td></tr>
+          <tr><td class="c">Ribbon 只读</td>
+              <td>拖拽调整不在 v1 范围</td>
+              <td>改时间在下方两列文本框里改</td></tr>
+          <tr><td class="c">一个本地日期一条记录</td>
+              <td>跨时区旅行时同一日期仍是同一张表</td>
+              <td>刻意设计；载入别处记录的日子会明确提示时区</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 原则 -->
+  <section class="sec">
+    <div class="sec-head"><span class="k">08</span><h2>刻意如此的四件事</h2></div>
+    <p class="lede">来自周岭《认知觉醒》。这是<strong>产品约束不是风格</strong>——改了会让这个 app 变成制造愧疚的机器。</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>原则</th><th>在 app 里的样子</th><th>为什么</th></tr></thead>
+        <tbody>
+          <tr><td class="c">用记录代替打卡</td><td>仪表给「上次中断的日期」，不给连续天数</td>
+              <td>打卡 → 认知闭合 → 应付 → 放弃 → 愧疚</td></tr>
+          <tr><td class="c">设下限不设上限</td><td>下限的标准是「再累也做得到」</td>
+              <td>下限太高就不是下限，是伪装成下限的上限</td></tr>
+          <tr><td class="c">少即是多</td><td>下限 / 最重要各限一条，UI 不允许加第二条</td>
+              <td>把约束写进数据模型，而不是靠自觉</td></tr>
+          <tr><td class="c">中性不评价</td><td>状态是「已完成／未记录」，无 ✓ ⚠ 感叹号鼓励语</td>
+              <td><code>false</code> 读作失败，<code>notRecorded</code> 读作事实</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="k">最后一句</span>
+      <p>愧疚是 N-1 触发器的燃料。这个 app 唯一不能做的事，就是让你因为它而更自责。</p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>Gong 工 · Swift 6 + SwiftUI/AppKit · 零第三方依赖 · 66 项测试</span>
+    <span class="mono">勾选状态只存在这台设备的浏览器里</span>
+  </footer>
+</div>
+
+<script>
+  var K = 'gong-acceptance-v1';
+  function load(){ try { return JSON.parse(localStorage.getItem(K)||'{}')||{}; } catch(e){ return {}; } }
+  function save(s){ try { localStorage.setItem(K, JSON.stringify(s)); } catch(e){} }
+  var state = load();
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('ul.items input[type=checkbox]'));
+  document.getElementById('total').textContent = boxes.length;
+
+  function paintRow(cb){ cb.closest('li').classList.toggle('checked', cb.checked); }
+
+  function refresh(){
+    var done = boxes.filter(function(b){ return b.checked; }).length;
+    document.getElementById('done').textContent = done;
+    document.getElementById('fill').style.width = (boxes.length ? (done/boxes.length*100) : 0) + '%';
+    document.querySelectorAll('ul.items[data-sec]').forEach(function(list){
+      var sec = list.getAttribute('data-sec');
+      var all = list.querySelectorAll('input[type=checkbox]');
+      var n = list.querySelectorAll('input[type=checkbox]:checked').length;
+      var label = document.querySelector('.done[data-done="'+sec+'"]');
+      if (label) label.textContent = n + ' / ' + all.length;
+    });
+  }
+
+  boxes.forEach(function(cb){
+    var k = cb.getAttribute('data-k');
+    if (state[k]) cb.checked = true;
+    paintRow(cb);
+    cb.addEventListener('change', function(){
+      state[k] = cb.checked; save(state); paintRow(cb); refresh();
+    });
+  });
+  refresh();
+
+  document.getElementById('reset').addEventListener('click', function(){
+    boxes.forEach(function(cb){ cb.checked = false; state[cb.getAttribute('data-k')] = false; paintRow(cb); });
+    save(state); refresh();
+  });
+
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var txt = document.getElementById(btn.getAttribute('data-copy')).textContent;
+      function flash(m){ btn.textContent = m; setTimeout(function(){ btn.textContent='复制'; }, 1500); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function(){ flash('已复制'); }, function(){ flash('复制失败'); });
+      } else { flash('复制失败'); }
+    });
+  });
+</script>
