@@ -226,7 +226,18 @@ actor FileStore {
         let fd = open(lockURL.path, O_WRONLY | O_CREAT, 0o644)
         guard fd >= 0 else { throw FileStoreError.lockFailed(lockURL.path) }
         defer { flock(fd, LOCK_UN); close(fd) }
-        guard flock(fd, LOCK_EX) == 0 else { throw FileStoreError.lockFailed(lockURL.path) }
+
+        // 必须用非阻塞 + 有界重试。这里在 actor 内执行，
+        // 阻塞式 `flock(LOCK_EX)` 会占住协作线程池的一个线程直到对方释放，
+        // 万一另一个进程长时间持锁，整个 FileStore 都会卡住。
+        var attempts = 0
+        while flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            guard errno == EWOULDBLOCK, attempts < 50 else {
+                throw FileStoreError.lockFailed(lockURL.path)
+            }
+            attempts += 1
+            usleep(20_000)                     // 最多等约 1 秒
+        }
         return try body()
     }
 

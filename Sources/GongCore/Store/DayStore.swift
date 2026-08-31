@@ -42,9 +42,11 @@ final class DayStore: ObservableObject {
     func load(dayKey: DayKey) async -> Bool {
         if isDirty {
             let ok = await saveNow()
-            guard ok else {
+            // 不只看返回值：保存的 await 期间用户可能又改了（saveNow 会把 isDirty 重新置真）。
+            // 只要还有未落盘的内容，就不能替换 record。
+            guard ok, !isDirty else {
                 notice = Notice(level: .warning,
-                                text: "当前内容尚未保存成功，已取消切换日期。请先解决保存失败的原因。")
+                                text: "当前内容尚未全部保存，已取消切换日期。稍后再试或先解决保存失败的原因。")
                 return false
             }
         }
@@ -142,7 +144,14 @@ final class DayStore: ObservableObject {
             // exportState 与 DayRecord 一起走同一条串行保存路径，避免两处各写一半
             record.exportState = s
             record.revision &+= 1
-            try? await store.write(record, to: GongPaths.dayFile(record.date))
+            let snapshot = record
+            do {
+                try await store.write(snapshot, to: GongPaths.dayFile(snapshot.date))
+                savedRevision = max(savedRevision, snapshot.revision)
+                isDirty = record.revision > savedRevision
+            } catch {
+                notice = Notice(level: .warning, text: "导出状态保存失败：\(error.localizedDescription)")
+            }
         }
 
         switch outcome {

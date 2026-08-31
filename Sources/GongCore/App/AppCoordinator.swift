@@ -89,7 +89,9 @@ final class AppCoordinator: NSObject, ObservableObject {
     /// 挂件内容会变（0 条 TODO ↔ 3 条），面板尺寸必须跟着 SwiftUI 的固有尺寸走，
     /// 否则要么裁切要么留白。
     private func resizeWidgetToFit() {
-        guard let panel = widgetPanel, let host = panel.contentView else { return }
+        // 用户正按着鼠标（很可能在拖挂件）时不要动它，否则会跟用户抢位置
+        guard NSEvent.pressedMouseButtons == 0 else { return }
+        guard let panel = widgetPanel, panel.isVisible, let host = panel.contentView else { return }
         let fitting = host.fittingSize
         guard fitting.height > 1,
               abs(panel.frame.height - fitting.height) > 1 ||
