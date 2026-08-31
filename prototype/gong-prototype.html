@@ -1,0 +1,575 @@
+<title>工字表 Gong</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --ground:    #E6E8E3;
+    --panel:     #FBFBF9;
+    --panel-2:   #F1F2EE;
+    --band:      #E9EBE5;
+    --line:      #D2D6CE;
+    --line-soft: #E3E5DF;
+    --ink:       #171B1A;
+    --ink-2:     #4B5350;
+    --ink-3:     #7B837F;
+    --plan:      #40628F;
+    --plan-bg:   #DCE4EF;
+    --actual:    #2F6B4C;
+    --actual-bg: #DCEAE1;
+    --warn:      #A8620A;
+    --warn-bg:   #F5E8D2;
+    --stop:      #A83A26;
+    --chrome:    #DEDFDA;
+    --shadow:    0 1px 0 rgba(23,27,26,.05), 0 18px 44px -28px rgba(23,27,26,.55);
+
+    --f-disp: "IBM Plex Sans Condensed", "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+    --f-body: "IBM Plex Sans", "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#101413; --panel:#1A1F1E; --panel-2:#212726; --band:#181D1C;
+      --line:#323A38; --line-soft:#282F2E; --ink:#E7EAE8; --ink-2:#A5AEAA; --ink-3:#78817D;
+      --plan:#7FA6D8; --plan-bg:#1B2530; --actual:#6FBB90; --actual-bg:#15251C;
+      --warn:#E8A93F; --warn-bg:#2C2416; --stop:#E08066; --chrome:#232928;
+      --shadow: 0 1px 0 rgba(0,0,0,.35), 0 20px 48px -30px rgba(0,0,0,1);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#101413; --panel:#1A1F1E; --panel-2:#212726; --band:#181D1C;
+    --line:#323A38; --line-soft:#282F2E; --ink:#E7EAE8; --ink-2:#A5AEAA; --ink-3:#78817D;
+    --plan:#7FA6D8; --plan-bg:#1B2530; --actual:#6FBB90; --actual-bg:#15251C;
+    --warn:#E8A93F; --warn-bg:#2C2416; --stop:#E08066; --chrome:#232928;
+    --shadow: 0 1px 0 rgba(0,0,0,.35), 0 20px 48px -30px rgba(0,0,0,1);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: var(--f-body); font-size: 14px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; padding: 0 20px 90px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1,h2,h3 { font-family: var(--f-disp); margin: 0; line-height: 1.25; text-wrap: balance; }
+  p { margin: 0; }
+  .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--plan); outline-offset: 2px; }
+
+  /* masthead */
+  header.mast { padding: 52px 0 24px; border-bottom: 2px solid var(--ink); display: flex; flex-direction: column; gap: 14px; }
+  .mast-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+  .mast h1 { font-size: clamp(30px,5.5vw,44px); font-weight: 700; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 14px; }
+  .mast h1 .glyph { font-family: var(--f-body); font-weight: 700; font-size: .8em; color: var(--plan); }
+  .stamp { font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .mast p { color: var(--ink-2); max-width: 66ch; }
+  .mast p strong { color: var(--ink); font-weight: 600; }
+
+  /* section */
+  section.sec { padding: 46px 0 0; display: flex; flex-direction: column; gap: 16px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+  .sec-head h2 { font-size: 21px; font-weight: 700; }
+  .sec-head .k { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
+  .lede { color: var(--ink-2); max-width: 68ch; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- mac window chrome ---- */
+  .win { border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); border-radius: 9px; overflow: hidden; }
+  .win-bar { background: var(--chrome); border-bottom: 1px solid var(--line); padding: 9px 13px; display: flex; align-items: center; gap: 9px; }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .dots i:nth-child(1){ background:#E5695B; } .dots i:nth-child(2){ background:#E0B341; } .dots i:nth-child(3){ background:#5CBB57; }
+  .win-title { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: .06em; margin-left: 6px; }
+  .win-tabs { margin-left: auto; display: flex; gap: 2px; }
+  .win-tabs button {
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: .05em; padding: 4px 11px;
+    background: transparent; border: 1px solid transparent; color: var(--ink-3); cursor: pointer; border-radius: 4px;
+  }
+  .win-tabs button[aria-selected="true"] { background: var(--panel); border-color: var(--line); color: var(--ink); }
+
+  /* ================= 工 GONG TABLE ================= */
+  .gong { padding: 0; }
+
+  /* 工 · 上横 & 下横：通栏 */
+  .band { background: var(--band); border-bottom: 1px solid var(--line); padding: 15px 22px 17px; }
+  .band.bottom { border-bottom: none; border-top: 1px solid var(--line); }
+  .band-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 11px; flex-wrap: wrap; }
+  .band-head .t { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+  .datenav { display: flex; align-items: center; gap: 8px; }
+  .datenav button {
+    font-family: var(--f-mono); font-size: 12px; width: 24px; height: 24px; line-height: 1;
+    background: var(--panel); border: 1px solid var(--line); color: var(--ink); cursor: pointer; border-radius: 4px;
+  }
+  .datenav button:hover { background: var(--plan-bg); border-color: var(--plan); }
+  .datenav .d { font-family: var(--f-mono); font-size: 13px; letter-spacing: .04em; min-width: 122px; text-align: center; }
+
+  /* todo rows */
+  ul.todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  ul.todos li { display: grid; grid-template-columns: 52px 20px minmax(0,1fr); gap: 10px; align-items: center; padding: 4px 0; }
+  .kind { font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; padding: 2px 5px; border-radius: 3px; text-align: center; white-space: nowrap; }
+  .kind.floor { background: var(--actual-bg); color: var(--actual); border: 1px solid var(--actual); }
+  .kind.mit   { background: var(--warn-bg);  color: var(--warn);  border: 1px solid var(--warn); }
+  .kind.none  { background: transparent; color: transparent; border: 1px solid transparent; }
+  ul.todos input[type=checkbox] { width: 15px; height: 15px; margin: 0; accent-color: var(--actual); cursor: pointer; }
+  ul.todos .txt { font-size: 14px; }
+  ul.todos li.done .txt { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--ink-3); }
+
+  /* 工 · 中竖：左右内缩 */
+  .stem { padding: 18px 62px 20px; background: var(--panel); }
+  @media (max-width: 760px) { .stem { padding: 16px 18px 18px; } }
+
+  /* ribbon: 横排时间轴 */
+  .ribbon { border: 1px solid var(--line); background: var(--panel-2); border-radius: 5px; overflow: hidden; }
+  .rb-axis { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .rb-axis span { flex: 1; font-family: var(--f-mono); font-size: 10px; color: var(--ink-3); padding: 4px 0 3px 5px; border-right: 1px solid var(--line-soft); }
+  .rb-axis span:last-child { border-right: none; }
+  .rb-track { position: relative; height: 30px; border-bottom: 1px solid var(--line-soft); }
+  .rb-track:last-child { border-bottom: none; }
+  .rb-label {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%); z-index: 2;
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; color: var(--ink-3);
+    background: var(--panel-2); padding: 0 4px; border-radius: 2px;
+  }
+  .blk { position: absolute; top: 5px; bottom: 5px; border-radius: 3px; overflow: hidden; cursor: default; }
+  .blk .cap { font-size: 10.5px; padding: 0 6px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blk.p { background: var(--plan-bg); border: 1px solid var(--plan); color: var(--plan); }
+  .blk.a { background: var(--actual-bg); border: 1px solid var(--actual); color: var(--actual); }
+  .blk.w { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); }
+  .rb-now { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--stop); z-index: 3; }
+  .rb-now::after { content: ""; position: absolute; top: -3px; left: -2.5px; width: 6px; height: 6px; border-radius: 50%; background: var(--stop); }
+
+  /* two columns */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-top: none; border-radius: 0 0 5px 5px; overflow: hidden; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  .col { background: var(--panel); padding: 11px 13px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .col-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
+  .col-h .n { font-family: var(--f-disp); font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+  .col.plan .col-h .n { color: var(--plan); }
+  .col.act  .col-h .n { color: var(--actual); }
+  .col-h .sum { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
+  .row { display: grid; grid-template-columns: 108px minmax(0,1fr); gap: 10px; align-items: baseline; padding: 3px 0; font-size: 13px; }
+  .row .tm { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row.warn .tx { color: var(--warn); }
+  .row.warn .tm { color: var(--warn); }
+  .addrow { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); padding: 4px 0 0; border: none; background: none; text-align: left; cursor: pointer; }
+  .addrow:hover { color: var(--plan); }
+
+  /* summary bottom */
+  .sumgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 14px; }
+  .sumcell { display: flex; flex-direction: column; gap: 5px; }
+  .sumcell .lbl { font-family: var(--f-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .sumcell .val { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+  .sumcell .val em { font-style: normal; color: var(--ink-3); }
+  .achv { display: flex; gap: 16px; font-size: 12.5px; font-family: var(--f-mono); }
+  .achv .y { color: var(--actual); } .achv .n { color: var(--ink-3); }
+
+  /* 工 glyph legend */
+  .glyphmap { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+  .glyphmap .g { font-size: 34px; font-weight: 700; line-height: 1; color: var(--plan); font-family: var(--f-body); }
+  .glyphmap ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 1px; }
+
+  /* ---- widget ---- */
+  .widget {
+    width: 268px; border-radius: 13px; border: 1px solid var(--line);
+    background: var(--panel); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .wg-h { padding: 9px 12px 8px; display: flex; align-items: center; justify-content: space-between; background: var(--band); border-bottom: 1px solid var(--line); }
+  .wg-h .d { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .05em; }
+  .wg-h .ic { font-family: var(--f-mono); font-size: 10px; color: var(--ink-3); }
+  .wg-b { padding: 10px 12px 11px; display: flex; flex-direction: column; gap: 8px; }
+  .wg-todo { display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 8px; align-items: start; font-size: 12.5px; line-height: 1.45; }
+  .wg-todo .m { font-family: var(--f-mono); font-size: 11px; line-height: 1.45; }
+  .wg-todo .m.f { color: var(--actual); } .wg-todo .m.s { color: var(--warn); } .wg-todo .m.o { color: var(--ink-3); }
+  .wg-div { height: 1px; background: var(--line-soft); }
+  .wg-now { font-family: var(--f-mono); font-size: 11px; color: var(--plan); }
+  .wg-foot { display: flex; gap: 12px; font-family: var(--f-mono); font-size: 10.5px; }
+  .wg-foot .f { color: var(--actual); } .wg-foot .w { color: var(--warn); }
+  .stage { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; padding: 22px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+  .stage .note { flex: 1 1 260px; font-size: 13px; color: var(--ink-2); display: flex; flex-direction: column; gap: 9px; }
+  .stage .note b { color: var(--ink); font-weight: 600; }
+
+  /* ---- dashboard ---- */
+  .bars { display: flex; flex-direction: column; gap: 7px; }
+  .bar { display: grid; grid-template-columns: 116px minmax(0,1fr) 62px; gap: 11px; align-items: center; font-size: 12.5px; }
+  .bar .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .tr { height: 15px; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 2px; overflow: hidden; }
+  .bar .fl { height: 100%; }
+  .bar .fl.f { background: var(--actual); } .bar .fl.n { background: var(--plan); } .bar .fl.d { background: var(--warn); }
+  .bar .vl { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 16px; font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+  /* ---- generic panel/table ---- */
+  .pnl { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 15px 17px; display: flex; flex-direction: column; gap: 11px; }
+  .pnl h3 { font-size: 14px; font-weight: 700; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+  .kv > div { background: var(--panel); padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
+  .kv .l { font-family: var(--f-mono); font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); }
+  .kv .v { font-family: var(--f-mono); font-size: 25px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kv .v.ok { color: var(--actual); } .kv .v.wr { color: var(--warn); }
+  .kv .h { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+
+  .tscroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 13px; }
+  th { text-align: left; font-family: var(--f-mono); font-size: 10px; letter-spacing: .11em; text-transform: uppercase;
+       color: var(--ink-3); padding: 10px 13px; border-bottom: 1px solid var(--line); background: var(--panel-2); white-space: nowrap; font-weight: 500; }
+  td { padding: 11px 13px; border-bottom: 1px solid var(--line-soft); vertical-align: top; line-height: 1.55; }
+  tr:last-child td { border-bottom: none; }
+  td.c { white-space: nowrap; font-family: var(--f-mono); font-size: 11.5px; }
+
+  .rule { border-left: 3px solid var(--stop); background: var(--panel); padding: 13px 17px; display: flex; flex-direction: column; gap: 5px; border-radius: 0 4px 4px 0; }
+  .rule .k { font-family: var(--f-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--stop); }
+  .rule .t { font-family: var(--f-disp); font-size: 16px; font-weight: 700; }
+  .rule p { font-size: 12.5px; color: var(--ink-2); }
+
+  .tabpane[hidden] { display: none !important; }
+
+  footer.foot { margin-top: 52px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mast-row">
+      <h1><span class="glyph">工</span>字表 Gong</h1>
+      <span class="stamp">Prototype v0.1 · macOS</span>
+    </div>
+    <p>
+      桌面常驻的每日「工」字表：<strong>上横 TODO，中段左计划右实际，下横总结</strong>。
+      中段顶部一条横排时间轴，把计划与实际叠在同一条时间线上——<strong>偏移一眼可见，这是这张表存在的理由</strong>。
+      融合注意力阻断器与软件使用时长监控。
+    </p>
+  </header>
+
+  <!-- ============ 主窗口 ============ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="k">01 / 主窗口</span>
+      <h2>「工」字表</h2>
+    </div>
+
+    <div class="glyphmap">
+      <span class="g">工</span>
+      <ol>
+        <li><strong>上横</strong>（通栏）— 今日 TODO，下限 ⌂ 与最重要 ★ 各限一条</li>
+        <li><strong>中竖</strong>（左右内缩，形成工字剪影）— 横排时间轴 + 左计划 / 右实际</li>
+        <li><strong>下横</strong>（通栏）— 今日总结：触动、模糊清单、达成</li>
+      </ol>
+    </div>
+
+    <div class="win">
+      <div class="win-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">Gong</span>
+        <span class="win-tabs" role="tablist">
+          <button role="tab" aria-selected="true"  data-tab="t-gong">工字表</button>
+          <button role="tab" aria-selected="false" data-tab="t-dash">看板</button>
+          <button role="tab" aria-selected="false" data-tab="t-brk">阻断器</button>
+        </span>
+      </div>
+
+      <!-- ---- TAB: 工字表 ---- -->
+      <div class="tabpane" id="t-gong">
+        <div class="gong">
+
+          <!-- 工 上横 -->
+          <div class="band">
+            <div class="band-head">
+              <span class="t">今日 TODO</span>
+              <span class="datenav">
+                <button type="button" aria-label="前一天">◀</button>
+                <span class="d">2026-08-31 周一</span>
+                <button type="button" aria-label="后一天">▶</button>
+              </span>
+            </div>
+            <ul class="todos">
+              <li class="done">
+                <span class="kind floor">⌂ 下限</span>
+                <input type="checkbox" checked aria-label="下限任务">
+                <span class="txt">把蜂箱数据分析报告的图表跑通一张</span>
+              </li>
+              <li>
+                <span class="kind mit">★ 最重要</span>
+                <input type="checkbox" aria-label="最重要任务">
+                <span class="txt">完成 apis prime 原型的登录流，发给 Xiaojia 过一遍</span>
+              </li>
+              <li>
+                <span class="kind none">·</span>
+                <input type="checkbox" aria-label="普通任务">
+                <span class="txt">回 Liz 关于专家评审时间的邮件</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- 工 中竖 -->
+          <div class="stem">
+            <div class="ribbon">
+              <div class="rb-axis" id="axis"></div>
+              <div class="rb-track" id="trk-plan"><span class="rb-label">计划</span></div>
+              <div class="rb-track" id="trk-act"><span class="rb-label">实际</span></div>
+            </div>
+            <div class="cols">
+              <div class="col plan">
+                <div class="col-h"><span class="n">计划</span><span class="sum" id="sum-plan">—</span></div>
+                <div class="row"><span class="tm">08:00 至 09:00</span><span class="tx">晨会 + 当日排程</span></div>
+                <div class="row"><span class="tm">09:00 至 11:30</span><span class="tx">蜂箱监测数据分析</span></div>
+                <div class="row"><span class="tm">13:00 至 15:00</span><span class="tx">apis prime 原型：登录流</span></div>
+                <div class="row"><span class="tm">15:30 至 17:00</span><span class="tx">HoneyLab 测试方法整理</span></div>
+                <button class="addrow" type="button">＋ 新增计划</button>
+              </div>
+              <div class="col act">
+                <div class="col-h"><span class="n">实际</span><span class="sum" id="sum-act">—</span></div>
+                <div class="row"><span class="tm">08:15 至 09:30</span><span class="tx">晨会（超时 30 分）</span></div>
+                <div class="row"><span class="tm">09:30 至 10:20</span><span class="tx">蜂箱监测数据分析</span></div>
+                <div class="row warn"><span class="tm">10:20 至 11:40</span><span class="tx">Google Chrome ⚠ 干扰 · 已记 V-2</span></div>
+                <div class="row"><span class="tm">13:10 至 15:40</span><span class="tx">apis prime 原型：登录流</span></div>
+                <button class="addrow" type="button">＋ 新增 ／ ⟲ 从监控填充</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 工 下横 -->
+          <div class="band bottom">
+            <div class="band-head"><span class="t">今日总结</span>
+              <span class="achv"><span class="y">下限 ✓ 达成</span><span class="n">最重要 · 未达成</span></span>
+            </div>
+            <div class="sumgrid">
+              <div class="sumcell">
+                <span class="lbl">触动</span>
+                <span class="val">图表跑通那一下，卡了三天的其实只是坐标轴单位错了。<em>—— 卡住的时候先写下来，比再想一小时有用。</em></span>
+              </div>
+              <div class="sumcell">
+                <span class="lbl">模糊清单</span>
+                <span class="val">登录流的 token 刷新策略不确定<br><em>→ 明天 30 分钟：把两个方案各写三行发给 Xiaojia 选</em></span>
+              </div>
+              <div class="sumcell">
+                <span class="lbl">注意力</span>
+                <span class="val">失控 1 次 · 80 分钟 · 触发 V-2<br><em>真正想逃开的：token 方案没定</em></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ---- TAB: 看板 ---- -->
+      <div class="tabpane" id="t-dash" hidden>
+        <div class="stem" style="padding:20px 22px;display:flex;flex-direction:column;gap:18px">
+          <div class="kv">
+            <div><span class="l">今日在机时长</span><span class="v">7h 42m</span></div>
+            <div><span class="l">专注</span><span class="v ok">5h 18m</span><span class="h">69%</span></div>
+            <div><span class="l">干扰</span><span class="v wr">1h 20m</span><span class="h">17%</span></div>
+            <div><span class="l">计划兑现率</span><span class="v">64<span style="font-size:13px">%</span></span><span class="h">实际落在计划块内的时间</span></div>
+          </div>
+
+          <div class="pnl">
+            <h3>今日各应用时长</h3>
+            <div class="bars">
+              <div class="bar"><span class="nm">Xcode</span><span class="tr"><span class="fl f" style="width:82%"></span></span><span class="vl">2h 34m</span></div>
+              <div class="bar"><span class="nm">Google Chrome</span><span class="tr"><span class="fl d" style="width:56%"></span></span><span class="vl">1h 45m</span></div>
+              <div class="bar"><span class="nm">Terminal</span><span class="tr"><span class="fl f" style="width:44%"></span></span><span class="vl">1h 22m</span></div>
+              <div class="bar"><span class="nm">Visual Studio Code</span><span class="tr"><span class="fl f" style="width:39%"></span></span><span class="vl">1h 12m</span></div>
+              <div class="bar"><span class="nm">微信</span><span class="tr"><span class="fl d" style="width:15%"></span></span><span class="vl">28m</span></div>
+              <div class="bar"><span class="nm">Safari</span><span class="tr"><span class="fl n" style="width:11%"></span></span><span class="vl">21m</span></div>
+            </div>
+            <div class="legend">
+              <span><i style="background:var(--actual)"></i>专注</span>
+              <span><i style="background:var(--plan)"></i>中性</span>
+              <span><i style="background:var(--warn)"></i>干扰</span>
+              <span style="margin-left:auto">类别可在设置中逐个应用修改</span>
+            </div>
+          </div>
+
+          <div class="pnl">
+            <h3>近 7 天</h3>
+            <div class="bars">
+              <div class="bar"><span class="nm mono">08-25 一</span><span class="tr"><span class="fl f" style="width:71%"></span></span><span class="vl">6h 10m</span></div>
+              <div class="bar"><span class="nm mono">08-26 二</span><span class="tr"><span class="fl f" style="width:84%"></span></span><span class="vl">7h 20m</span></div>
+              <div class="bar"><span class="nm mono">08-27 三</span><span class="tr"><span class="fl d" style="width:31%"></span></span><span class="vl">2h 41m</span></div>
+              <div class="bar"><span class="nm mono">08-28 四</span><span class="tr"><span class="fl f" style="width:66%"></span></span><span class="vl">5h 45m</span></div>
+              <div class="bar"><span class="nm mono">08-29 五</span><span class="tr"><span class="fl f" style="width:78%"></span></span><span class="vl">6h 48m</span></div>
+              <div class="bar"><span class="nm mono">08-30 六</span><span class="tr"><span class="fl n" style="width:22%"></span></span><span class="vl">1h 55m</span></div>
+              <div class="bar"><span class="nm mono">08-31 日</span><span class="tr"><span class="fl f" style="width:61%"></span></span><span class="vl">5h 18m</span></div>
+            </div>
+          </div>
+
+          <p class="lede" style="font-size:12.5px">
+            <strong>诚实的限制：</strong>Claude Code 运行在 Terminal / iTerm 里，系统层面看到的是宿主应用，因此默认统计为 <span class="mono">Terminal</span>。
+            要区分需开启「细分规则」（辅助功能权限，读前台窗口标题按正则打标签），默认关闭。
+          </p>
+        </div>
+      </div>
+
+      <!-- ---- TAB: 阻断器 ---- -->
+      <div class="tabpane" id="t-brk" hidden>
+        <div class="stem" style="padding:20px 22px;display:flex;flex-direction:column;gap:16px">
+          <div class="kv">
+            <div><span class="l">距上次失控</span><span class="v ok">6</span><span class="h">天</span></div>
+            <div><span class="l">本月最长一次</span><span class="v wr">80</span><span class="h">分钟（上月 4h 10m）</span></div>
+            <div><span class="l">只看这两个数</span><span class="h">第二个数在下降就是在赢，即使第一个被清零过很多次。不显示连续天数徽章。</span></div>
+          </div>
+
+          <div class="rule">
+            <span class="k">唯一的硬规则</span>
+            <span class="t">任何一次失控，不许跨过一次睡眠。</span>
+            <p>跨日自动归零，不做连续天数展示——愧疚是 N-1 的燃料。</p>
+          </div>
+
+          <div class="pnl">
+            <h3>主动触发（监控 × 阻断器）</h3>
+            <p class="lede" style="font-size:13px">干扰类应用连续前台超过阈值时，挂件变色 + 菜单栏图标变化 + 一个<strong>非模态</strong>浮层。绝不用系统模态弹窗。</p>
+            <div class="tscroll">
+              <table>
+                <thead><tr><th>编号</th><th>触发场景</th><th>当场动作</th></tr></thead>
+                <tbody>
+                  <tr><td class="c" style="color:var(--warn)">N-1</td><td>卡住了，不知道怎么办</td><td>打开模糊拆解器 → 4 栏 → 写入当日模糊清单</td></tr>
+                  <tr><td class="c" style="color:var(--warn)">N-2</td><td>干完硬活想放松</td><td>提示预先指定的、有物理终点的休息</td></tr>
+                  <tr><td class="c" style="color:var(--warn)">N-3</td><td>随手点开</td><td>记录环境工程漏洞位置</td></tr>
+                  <tr><td class="c" style="color:var(--actual)">V-1</td><td>想学东西却滑进短视频</td><td>自动检测：干扰应用前台 &gt; 15 分钟</td></tr>
+                  <tr><td class="c" style="color:var(--actual)">V-2</td><td>空档刷手机</td><td>同上，一键「记一笔」预填编号</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="pnl">
+            <h3>模糊拆解器</h3>
+            <p class="lede" style="font-size:13px">
+              四栏：<span class="mono">01 事实 · 02 情绪 · 03 最坏情况 · 04 出口</span>。
+              <strong>第 04 栏（明天 30 分钟内能做完的第一步）未填就不算完成</strong>，填完直接写进当天总结的模糊清单，随 Markdown 一起导出。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 挂件 ============ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="k">02 / 桌面挂件</span>
+      <h2>常驻可见</h2>
+    </div>
+    <div class="stage">
+      <div class="widget">
+        <div class="wg-h"><span class="d">08-31 周一</span><span class="ic">工</span></div>
+        <div class="wg-b">
+          <div class="wg-todo"><span class="m f">⌂</span><span>把蜂箱数据分析报告的图表跑通一张</span></div>
+          <div class="wg-todo"><span class="m s">★</span><span>完成 apis prime 原型的登录流</span></div>
+          <div class="wg-todo"><span class="m o">·</span><span>回 Liz 关于专家评审时间的邮件</span></div>
+          <div class="wg-div"></div>
+          <div class="wg-now">09:00–11:30　蜂箱监测数据分析</div>
+          <div class="wg-foot"><span class="f">● 专注 5h18m</span><span class="w">○ 干扰 1h20m</span></div>
+        </div>
+      </div>
+      <div class="note">
+        <p><b>层级：</b>默认桌面层（像原生 widget，不挡工作窗口）；设置里可切「置顶」；全局快捷键 <span class="mono">⌥⌘G</span> 临时提前 2 秒——「一眼看到」而不长期挡路。</p>
+        <p><b>内容：</b>最多 3 条 TODO，顺序为 下限 → 最重要 → 其余。<b>不显示「还有 N 条」</b>，避免制造压力。</p>
+        <p><b>交互：</b>拖拽移动，位置持久化；所有 Space 可见；<b>点击 = 打开主窗口</b>并聚焦，即「点击后展开编辑」。</p>
+        <p><b>状态：</b>干扰应用超时时挂件整体变为琥珀色描边——这是唯一的主动视觉打扰。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 原则 ============ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="k">03 / 写死的原则</span>
+      <h2>不可协商的四条</h2>
+    </div>
+    <p class="lede">来自周岭《认知觉醒》。这四条是产品约束，不是风格建议——违反其中任何一条，这个 app 会亲手把用户送回失控。</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>原则</th><th>在 UI 上的具体含义</th><th>为什么</th></tr></thead>
+        <tbody>
+          <tr><td class="c">用记录代替打卡</td><td>不显示连续天数徽章、不显示未完成红点、无「打卡成功」动效</td><td>打卡 → 认知闭合 → 为完成而完成 → 应付 → 放弃</td></tr>
+          <tr><td class="c">设下限不设上限</td><td>「下限」栏 placeholder 永远是「再累也做得到」；下限只能有一条</td><td>下限太高就不是下限，是伪装成下限的上限</td></tr>
+          <tr><td class="c">少即是多</td><td>「最重要」硬性限一条，UI 不允许加第二条</td><td>把约束写进数据模型，而不是靠自觉</td></tr>
+          <tr><td class="c">中性不评价</td><td>失控记录与未达成项无感叹号、无表情、无鼓励语</td><td>愧疚是 N-1 触发器的燃料</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>Gong 工 · 原型 v0.1 · Swift 6 + SwiftUI/AppKit · 零第三方依赖</span>
+    <span class="mono">工 = 上横 TODO ／ 中竖 计划|实际 ／ 下横 总结</span>
+  </footer>
+</div>
+
+<script>
+  // ---- tabs ----
+  var tabs = document.querySelectorAll('.win-tabs button');
+  Array.prototype.forEach.call(tabs, function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(tabs, function (o) {
+        o.setAttribute('aria-selected', String(o === b));
+        document.getElementById(o.getAttribute('data-tab')).hidden = (o !== b);
+      });
+    });
+  });
+
+  // ---- ribbon: 横排时间轴 ----
+  var T0 = 6 * 60, T1 = 23 * 60, SPAN = T1 - T0;   // 06:00 – 23:00
+  function pct(m) { return ((m - T0) / SPAN) * 100; }
+
+  var axis = document.getElementById('axis');
+  for (var h = 6; h < 23; h += 2) {
+    var s = document.createElement('span');
+    s.textContent = (h < 10 ? '0' : '') + h;
+    s.style.flex = '2';
+    axis.appendChild(s);
+  }
+
+  var PLAN = [
+    [480, 540, '晨会'], [540, 690, '数据分析'],
+    [780, 900, '原型：登录流'], [930, 1020, 'HoneyLab 方法']
+  ];
+  var ACT = [
+    [495, 570, '晨会', 0], [570, 620, '数据分析', 0],
+    [620, 700, 'Chrome', 1], [790, 940, '原型：登录流', 0]
+  ];
+
+  function place(trackId, list, cls) {
+    var t = document.getElementById(trackId);
+    list.forEach(function (b) {
+      var d = document.createElement('div');
+      d.className = 'blk ' + (b[3] === 1 ? 'w' : cls);
+      d.style.left = pct(b[0]) + '%';
+      d.style.width = Math.max(0, pct(b[1]) - pct(b[0])) + '%';
+      d.title = fmt(b[0]) + ' 至 ' + fmt(b[1]) + '：' + b[2];
+      var c = document.createElement('div');
+      c.className = 'cap'; c.textContent = b[2];
+      d.appendChild(c); t.appendChild(d);
+    });
+  }
+  function fmt(m) { var h = Math.floor(m / 60), x = m % 60; return (h < 10 ? '0' : '') + h + ':' + (x < 10 ? '0' : '') + x; }
+  function total(list) { return list.reduce(function (a, b) { return a + (b[1] - b[0]); }, 0); }
+  function hm(m) { var h = Math.floor(m / 60), x = m % 60; return (h ? h + 'h ' : '') + x + 'm'; }
+
+  place('trk-plan', PLAN, 'p');
+  place('trk-act', ACT, 'a');
+
+  document.getElementById('sum-plan').textContent = '共 ' + hm(total(PLAN));
+  document.getElementById('sum-act').textContent = '共 ' + hm(total(ACT));
+
+  // now marker (mock at 15:40 so the prototype reads consistently)
+  ['trk-plan', 'trk-act'].forEach(function (id) {
+    var n = document.createElement('div');
+    n.className = 'rb-now';
+    n.style.left = pct(940) + '%';
+    document.getElementById(id).appendChild(n);
+  });
+
+  // ---- todo strike ----
+  document.querySelectorAll('ul.todos input').forEach(function (cb) {
+    cb.addEventListener('change', function () { cb.closest('li').classList.toggle('done', cb.checked); });
+  });
+</script>
