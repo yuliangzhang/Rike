@@ -304,16 +304,16 @@ struct GongTableView: View {
         GongBand(title: "今日总结", trailing: AnyView(statusLine)) {
             VStack(alignment: .leading, spacing: 12) {
                 labeledEditor("触动", hint: "今天最触动我的一件事，好坏都算，写细",
-                              text: Binding(
-                                get: { store.record.summary.touched },
-                                set: { v in store.mutate { $0.summary.touched = v } }))
+                              value: store.record.summary.touched) { v in
+                    store.mutate { $0.summary.touched = v }
+                }
 
                 clarityBlock
 
                 labeledEditor("备注", hint: "可留空",
-                              text: Binding(
-                                get: { store.record.summary.freeText },
-                                set: { v in store.mutate { $0.summary.freeText = v } }))
+                              value: store.record.summary.freeText) { v in
+                    store.mutate { $0.summary.freeText = v }
+                }
             }
         }
     }
@@ -344,24 +344,11 @@ struct GongTableView: View {
         }
     }
 
-    private func labeledEditor(_ label: String, hint: String, text: Binding<String>) -> some View {
+    private func labeledEditor(_ label: String, hint: String,
+                               value: String, onChange: @escaping (String) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-            TextEditor(text: text)
-                .font(.system(size: 12))
-                .frame(minHeight: 44)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(Color.primary.opacity(0.035))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.hairline))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(alignment: .topLeading) {
-                    if text.wrappedValue.isEmpty {
-                        Text(hint).font(.system(size: 12)).foregroundStyle(.tertiary)
-                            .padding(.horizontal, 11).padding(.vertical, 12)
-                            .allowsHitTesting(false)
-                    }
-                }
+            BufferedTextEditor(value: value, hint: hint, onChange: onChange)
         }
     }
 }

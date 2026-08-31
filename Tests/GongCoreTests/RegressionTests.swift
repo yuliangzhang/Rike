@@ -174,3 +174,134 @@ final class ExportRegressionTests: XCTestCase {
                       "原文件必须一字不动")
     }
 }
+
+/// 第二轮代码审查的回归测试。
+@MainActor
+final class DayStoreRegressionTests2: XCTestCase {
+    private var tmp: URL!
+
+    override func setUp() async throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("gong-reg2-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        GongPaths.overrideRoot = tmp
+    }
+    override func tearDown() async throws {
+        GongPaths.overrideRoot = nil
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    private func makeStore(_ date: String = "2026-09-01") -> DayStore {
+        let s = DayStore(dayKey: DayKey(date: date, timeZoneIdentifier: "Australia/Perth"))
+        s.settingsProvider = {
+            var st = AppSettings()
+            st.exportDirectoryPath = self.tmp.appendingPathComponent("export").path
+            return st
+        }
+        return s
+    }
+    private func key(_ d: String) -> DayKey { DayKey(date: d, timeZoneIdentifier: "Australia/Perth") }
+
+    /// 修复前：`savedRevision` 不绑定日期，旧日期的保存返回后会抬高水位，
+    /// 把新日期保存期间的编辑误判为已保存。
+    func testSavedRevisionDoesNotLeakAcrossDays() async throws {
+        let store = makeStore("2026-09-01")
+        await store.load(dayKey: key("2026-09-01"))
+
+        // 在 9-01 上做很多次编辑，把 revision 推高
+        for i in 0..<20 { store.mutate { $0.summary.freeText = "第 \(i) 次" } }
+        _ = await store.saveNow()
+
+        // 切到 9-02（revision 从 0 开始），编辑一次
+        let ok = await store.load(dayKey: key("2026-09-02"))
+        XCTAssertTrue(ok)
+        XCTAssertEqual(store.record.revision, 0, "新的一天 revision 应从 0 开始")
+        store.mutate { $0.summary.freeText = "新一天的内容" }
+        _ = await store.saveNow()
+
+        let fresh = makeStore("2026-09-02")
+        await fresh.load(dayKey: key("2026-09-02"))
+        XCTAssertEqual(fresh.record.summary.freeText, "新一天的内容",
+                       "旧日期的高 revision 不得污染新日期的 dirty 判定")
+        // 9-01 的内容也必须完好
+        let old = makeStore("2026-09-01")
+        await old.load(dayKey: key("2026-09-01"))
+        XCTAssertEqual(old.record.summary.freeText, "第 19 次")
+    }
+
+    /// 修复前：导出返回后无条件把 exportState 挂到当前 record 上。
+    /// 若导出期间用户又改了内容，那个 contentHash 描述的是旧内容，
+    /// 下次导出会误判「文件未被改动」。
+    func testExportStateNotWrittenBackAfterConcurrentEdit() async throws {
+        let store = makeStore()
+        await store.load(dayKey: key("2026-09-01"))
+        store.mutate { $0.todos = [Todo(text: "导出前")] }
+
+        async let exporting: Void = store.exportNow()
+        store.mutate { $0.todos = [Todo(text: "导出中改的")] }   // 并发编辑
+        await exporting
+
+        // 内容必须是最新的；exportState 要么没挂上，要么与磁盘一致
+        XCTAssertEqual(store.record.todos.first?.text, "导出中改的")
+        if let st = store.record.exportState {
+            let onDisk = try String(contentsOf: URL(fileURLWithPath: st.path), encoding: .utf8)
+            XCTAssertEqual(FileStore.sha256(onDisk), st.contentHash,
+                           "挂上的 hash 必须与磁盘内容一致，否则下次导出会误判")
+        }
+    }
+
+    /// 载入别的时区记录时要提示用户，而不是悄悄按当前时区重算。
+    func testCrossTimeZoneLoadSurfacesNotice() async throws {
+        let store = makeStore()
+        await store.load(dayKey: key("2026-09-01"))
+        store.mutate { $0.todos = [Todo(text: "在珀斯记的")] }
+        _ = await store.saveNow()
+
+        let fresh = makeStore()
+        await fresh.load(dayKey: DayKey(date: "2026-09-01", timeZoneIdentifier: "America/New_York"))
+        XCTAssertEqual(fresh.record.key.timeZoneIdentifier, "Australia/Perth")
+        XCTAssertNotNil(fresh.notice, "跨时区载入应明确提示，而不是静默")
+    }
+}
+
+/// 两阶段原子写：先备好 temp，锁内只做复核 + rename。
+final class TwoPhaseWriteTests: XCTestCase {
+    private var tmp: URL!
+    override func setUpWithError() throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("gong-2p-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: tmp) }
+
+    func testPrepareThenCommitReplacesAtomically() throws {
+        let target = tmp.appendingPathComponent("x.md")
+        try "旧内容".write(to: target, atomically: true, encoding: .utf8)
+
+        let staged = try FileStore.prepareTempSync(Data("新内容".utf8), for: target)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staged.path))
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "旧内容",
+                       "准备阶段不得触碰目标文件")
+
+        try FileStore.commitTempSync(staged, to: target)
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "新内容")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path), "temp 应已被 rename 掉")
+    }
+
+    func testDiscardRemovesStagedFile() throws {
+        let target = tmp.appendingPathComponent("y.md")
+        let staged = try FileStore.prepareTempSync(Data("放弃".utf8), for: target)
+        FileStore.discardTempSync(staged)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path), "放弃后不得留下目标文件")
+    }
+
+    func testStagedFileLivesInSameDirectory() throws {
+        let target = tmp.appendingPathComponent("z.md")
+        let staged = try FileStore.prepareTempSync(Data("x".utf8), for: target)
+        defer { FileStore.discardTempSync(staged) }
+        XCTAssertEqual(staged.deletingLastPathComponent().standardizedFileURL,
+                       target.deletingLastPathComponent().standardizedFileURL,
+                       "temp 必须与目标同目录，否则跨卷 rename 不原子")
+    }
+}

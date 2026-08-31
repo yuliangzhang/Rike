@@ -8,6 +8,7 @@ struct MainWindowView: View {
 
     var onWidgetModeChange: (WidgetMode) -> Void
     var onWidgetVisibilityChange: (Bool) -> Void
+    var onMonitoringChange: (Bool) -> Void
 
     @State private var tab: Tab = .gong
 
@@ -41,7 +42,8 @@ struct MainWindowView: View {
                 SettingsView(settings: settings,
                              store: store,
                              onWidgetModeChange: onWidgetModeChange,
-                             onWidgetVisibilityChange: onWidgetVisibilityChange)
+                             onWidgetVisibilityChange: onWidgetVisibilityChange,
+                             onMonitoringChange: onMonitoringChange)
             }
         }
         .frame(minWidth: 900, minHeight: 640)

@@ -29,8 +29,9 @@ enum ExportOutcome: Sendable, Equatable {
 ///    → **完全不碰原文件**，另存 `*.gong-conflict[-N].md`（同样 O_EXCL，
 ///    不覆盖旧冲突文件）。
 /// 3. 只有当标记与 hash **都**证明「这就是我们上次写的、且没人动过」时才原子替换，
-///    并且整段校验+写入放在同目录 `flock` 内、**在 rename 前再复核一次 hash**。
-///    残余窗口 = 最后一次复核到 rename 之间的几十微秒，且此时文件内容本就是我们的产物。
+///    并且整段校验放在同目录 `flock` 内。内容先写进临时文件，
+///    **锁内只做「复核 hash + rename」**，残余窗口是这两步之间的几十微秒
+///    （而不是包含写盘 + fsync 的毫秒级窗口），且此时目标内容本就是我们的产物。
 /// 4. 自动导出默认关闭（`AppSettings.autoExport`），把写入次数从「每次编辑」
 ///    降到「手动/收工」，把「有机会撞上」的次数也压到最低。
 ///
@@ -80,11 +81,16 @@ actor Exporter {
                 // 3) 内容没变就不写盘 —— 少写一次就少一次暴露
                 if currentHash == newHash { return .unchanged(target) }
 
-                // 4) rename 前最后一刻再复核，把窗口压到最小
+                // 4) 内容先写进临时文件（耗时部分），锁内最后只做「复核 + rename」，
+                //    把窗口从「整个写盘过程」压缩到两个几乎瞬时的操作。
+                let tmp = try FileStore.prepareTempSync(Data(text.utf8), for: target)
                 guard let (_, recheck) = try FileStore.readSyncWithHash(target),
-                      recheck == currentHash else { return .conflict(target) }
-
-                try FileStore.writeAtomicSync(Data(text.utf8), to: target)
+                      recheck == currentHash else {
+                    FileStore.discardTempSync(tmp)
+                    return .conflict(target)
+                }
+                do { try FileStore.commitTempSync(tmp, to: target) }
+                catch { FileStore.discardTempSync(tmp); throw error }
                 return .updated(target)
             }
 

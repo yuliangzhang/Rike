@@ -28,6 +28,8 @@ final class UsageMonitor: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     /// 串行写入链，保证事件按顺序落盘且退出前可等待。
     private var writeChain: Task<Void, Never>?
+    /// 每入队一条事件递增，用于判断 drain 期间是否又有新事件排进来。
+    private var writeGeneration: Int = 0
 
     var settingsProvider: () -> AppSettings = { AppSettings() }
     /// 事件写入后回调，供阻断器/UI 刷新。
@@ -192,6 +194,9 @@ final class UsageMonitor: ObservableObject {
                       at date: Date = Date(),
                       bundleId: String? = nil,
                       name: String? = nil) {
+        // stop 之后仍可能有已排队的 timer / 通知闭包执行到这里。
+        // 除 appStop 外一律丢弃，否则会写出「appStop 之后还有事件」的日志。
+        guard isRunning || kind == .appStop else { return }
         guard settingsProvider().monitoringEnabled || kind == .appStop else { return }
         seq += 1
         let ev = UsageEvent(t: date, e: kind, runId: runId, seq: seq,
@@ -204,6 +209,7 @@ final class UsageMonitor: ObservableObject {
     /// 原来用 `Task.detached` 各写各的：既不保证落盘顺序，`stop()` 也不等它们完成，
     /// 正常退出时最后的 appStop 事件可能丢掉。
     private func enqueueWrite(_ ev: UsageEvent) {
+        writeGeneration += 1
         let previous = writeChain
         writeChain = Task { [store] in
             _ = await previous?.result
@@ -213,8 +219,14 @@ final class UsageMonitor: ObservableObject {
     }
 
     /// 等待已排队的事件全部落盘。
+    /// 循环到链尾稳定：等待期间可能又有闭包 enqueue 出新的一节。
     func drainWrites() async {
-        _ = await writeChain?.result
+        for _ in 0..<10 {
+            let mark = writeGeneration
+            guard let chain = writeChain else { return }
+            _ = await chain.result
+            if writeGeneration == mark { return }   // 等待期间没有新事件入队，说明排空了
+        }
     }
 
     /// 当前应用已连续在前台多久（秒）。空闲时为 0。

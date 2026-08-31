@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var store: DayStore
     var onWidgetModeChange: (WidgetMode) -> Void
     var onWidgetVisibilityChange: (Bool) -> Void
+    var onMonitoringChange: (Bool) -> Void
 
     @State private var loginItemError: String?
 
@@ -106,7 +107,9 @@ struct SettingsView: View {
 
     private var monitorSection: some View {
         panel("使用时长监控") {
-            Toggle("启用监控", isOn: s.monitoringEnabled)
+            Toggle("启用监控", isOn: Binding(
+                get: { settings.settings.monitoringEnabled },
+                set: { v in settings.settings.monitoringEnabled = v; onMonitoringChange(v) }))
             HStack {
                 Text("空闲判定阈值").font(.system(size: 12))
                 Spacer()

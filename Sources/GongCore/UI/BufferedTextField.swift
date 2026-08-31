@@ -39,3 +39,47 @@ struct BufferedTextField: View {
             }
     }
 }
+
+
+/// 多行版本。理由同上：「触动 / 备注」是长文本，中文 IME 组合输入时
+/// 每个中间态都会替换整个 DayRecord，直接绑定模型容易光标跳动和输入抖动。
+struct BufferedTextEditor: View {
+    let value: String
+    var hint: String = ""
+    var minHeight: CGFloat = 44
+    let onChange: (String) -> Void
+
+    @State private var text: String = ""
+    @State private var primed = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.system(size: 12))
+            .frame(minHeight: minHeight)
+            .scrollContentBackground(.hidden)
+            .focused($focused)
+            .padding(6)
+            .background(Color.primary.opacity(0.035))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.hairline))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(hint).font(.system(size: 12)).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 11).padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onAppear { text = value; primed = true }
+            .onChange(of: value) { _, newValue in
+                if !focused, newValue != text { text = newValue }
+            }
+            .onChange(of: text) { _, newValue in
+                guard primed, focused, newValue != value else { return }
+                onChange(newValue)
+            }
+            .onChange(of: focused) { _, isFocused in
+                if !isFocused, text != value { onChange(text) }
+            }
+    }
+}

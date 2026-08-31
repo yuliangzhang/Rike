@@ -24,9 +24,11 @@ final class DayStore: ObservableObject {
     private let store = FileStore.shared
     private var saveTask: Task<Void, Never>?
     private let debounceNanos: UInt64 = 1_500_000_000
-    /// 最后一次**成功落盘**的 revision。用它判断 dirty，而不是无条件清标志：
-    /// 保存 I/O 期间用户可能又改了，旧保存返回后不能把新改动标成 clean。
+    /// 最后一次**成功落盘**的 revision，以及它属于哪一天。
+    /// 必须绑定日期：`revision` 只在同一条记录的生命周期内单调，
+    /// 旧日期的异步保存若在切日后才返回，跨记录比较会把新日期的 dirty 误清。
     private var savedRevision: Int = 0
+    private var savedDate: String = ""
 
     var settingsProvider: () -> AppSettings = { AppSettings() }
 
@@ -68,6 +70,13 @@ final class DayStore: ObservableObject {
         }
         isDirty = false
         savedRevision = record.revision
+        savedDate = record.key.date
+        // 载入的记录若带着别的时区，说明这一天是在别处记的 —— 明确告诉用户，
+        // 而不是悄悄用当前时区重算它。
+        if record.key.timeZoneIdentifier != dayKey.timeZoneIdentifier {
+            notice = Notice(level: .info,
+                            text: "这一天记录于 \(record.key.timeZoneIdentifier)，按记录时的时区显示。")
+        }
         await refreshUsage()
         return true
     }
@@ -122,10 +131,15 @@ final class DayStore: ObservableObject {
             notice = Notice(level: .warning, text: "保存失败：\(error.localizedDescription)")
             return false
         }
-        savedRevision = max(savedRevision, snapshot.revision)
-        // 保存期间若又发生了编辑（revision 变大），仍然是 dirty，不能清标志
-        isDirty = record.revision > savedRevision
-        if isDirty { scheduleSave() }
+        // 只有当「当前仍是同一条记录」时才更新已保存水位。
+        // 否则这是一次跨日期的陈旧保存，不能用它影响当前记录的 dirty 判定。
+        if record.key.date == snapshot.key.date {
+            savedDate = snapshot.key.date
+            savedRevision = max(savedRevision, snapshot.revision)
+            // 保存期间若又发生了编辑（revision 变大），仍然是 dirty，不能清标志
+            isDirty = record.revision > savedRevision
+            if isDirty { scheduleSave() }
+        }
 
         if settingsProvider().autoExport {
             await exportNow(silentWhenUnchanged: true)
@@ -137,20 +151,31 @@ final class DayStore: ObservableObject {
 
     func exportNow(silentWhenUnchanged: Bool = false) async {
         let settings = settingsProvider()
+        // 导出期间用户可能继续编辑或切日期 —— 记下身份，返回后核对。
+        let exportedDate = record.key.date
+        let exportedRevision = record.revision
+
         let (outcome, newState) = await Exporter.shared.export(
             record: record, usage: usage, settings: settings)
 
-        if let s = newState, s != record.exportState {
-            // exportState 与 DayRecord 一起走同一条串行保存路径，避免两处各写一半
+        // 只有仍是同一条记录、且期间没有新编辑时，才把导出状态写回。
+        // 否则这个 contentHash 描述的是旧内容，挂上去会让下次导出误判为「未被改动」。
+        let stillSameRecord = record.key.date == exportedDate && record.revision == exportedRevision
+        if let s = newState, stillSameRecord, s != record.exportState {
             record.exportState = s
             record.revision &+= 1
+            isDirty = true                        // 先标脏，写成功后再由水位决定
             let snapshot = record
             do {
                 try await store.write(snapshot, to: GongPaths.dayFile(snapshot.date))
-                savedRevision = max(savedRevision, snapshot.revision)
-                isDirty = record.revision > savedRevision
+                if record.key.date == snapshot.key.date {
+                    savedDate = snapshot.key.date
+                    savedRevision = max(savedRevision, snapshot.revision)
+                    isDirty = record.revision > savedRevision
+                }
             } catch {
                 notice = Notice(level: .warning, text: "导出状态保存失败：\(error.localizedDescription)")
+                scheduleSave()
             }
         }
 

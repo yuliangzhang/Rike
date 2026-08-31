@@ -76,9 +76,9 @@ actor FileStore {
         }
         do {
             let fh = try FileHandle(forWritingTo: tmp)
-            defer { try? fh.close() }
             try fh.write(contentsOf: data)
             try fh.synchronize()          // fsync：内容真正落盘
+            try fh.close()                // close 失败也要暴露
         } catch {
             try? fm.removeItem(at: tmp)
             throw error
@@ -260,9 +260,9 @@ actor FileStore {
         }
         do {
             let fh = try FileHandle(forWritingTo: tmp)
-            defer { try? fh.close() }
             try fh.write(contentsOf: data)
             try fh.synchronize()
+            try fh.close()
         } catch {
             try? fm.removeItem(at: tmp)
             throw error
@@ -280,6 +280,50 @@ actor FileStore {
         } else {
             throw FileStoreError.openFailed(dir.path, errno: errno)
         }
+    }
+
+    /// 两阶段原子写 · 阶段一：把内容写进同目录临时文件并 fsync。
+    /// 拆成两阶段的原因：校验目标 hash 之后如果还要写 + fsync 才 rename，
+    /// 那段耗时（可达毫秒级）全部落在「校验通过」到「实际替换」的窗口里。
+    /// 先把 temp 准备好，锁内就只剩「复核 + rename」两个几乎瞬时的操作。
+    nonisolated static func prepareTempSync(_ data: Data, for target: URL) throws -> URL {
+        let fm = FileManager.default
+        let dir = target.deletingLastPathComponent()
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let tmp = dir.appendingPathComponent(".\(target.lastPathComponent).tmp-\(UUID().uuidString)")
+
+        guard fm.createFile(atPath: tmp.path, contents: nil) else {
+            throw FileStoreError.writeFailed(tmp.path)
+        }
+        do {
+            let fh = try FileHandle(forWritingTo: tmp)
+            try fh.write(contentsOf: data)
+            try fh.synchronize()
+            try fh.close()          // close 失败也要暴露：NFS/外置盘会把延迟写错误报在 close
+        } catch {
+            try? fm.removeItem(at: tmp)
+            throw error
+        }
+        return tmp
+    }
+
+    /// 两阶段原子写 · 阶段二：rename + 目录同步。窗口只有这一步。
+    nonisolated static func commitTempSync(_ tmp: URL, to target: URL) throws {
+        if rename(tmp.path, target.path) != 0 {
+            let e = errno
+            try? FileManager.default.removeItem(at: tmp)
+            throw FileStoreError.renameFailed(target.path, errno: e)
+        }
+        let dir = target.deletingLastPathComponent()
+        let fd = open(dir.path, O_RDONLY)
+        guard fd >= 0 else { throw FileStoreError.openFailed(dir.path, errno: errno) }
+        let ok = fsync(fd) == 0
+        let closeOK = close(fd) == 0
+        if !ok || !closeOK { throw FileStoreError.syncFailed(dir.path, errno: errno) }
+    }
+
+    nonisolated static func discardTempSync(_ tmp: URL) {
+        try? FileManager.default.removeItem(at: tmp)
     }
 
     /// 同步读取并计算 hash，供导出的锁内校验使用（锁内不能 await）。

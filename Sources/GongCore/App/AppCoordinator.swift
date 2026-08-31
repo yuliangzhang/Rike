@@ -16,6 +16,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
     private var uiTimer: Timer?
     private var moveObserver: NSObjectProtocol?
+    private var isProgrammaticMove = false
     /// 上一次已知的监控开关状态，用于驱动 monitor 的启停。
     private var lastMonitoringEnabled: Bool = true
 
@@ -77,13 +78,17 @@ final class AppCoordinator: NSObject, ObservableObject {
         updateStatusItemTitle()
     }
 
-    /// 设置里的「启用监控」必须真的启停 monitor —— 只让 emit 短路，
-    /// 定时器和通知订阅仍在跑，等于开关没生效。
-    private func syncMonitorLifecycle() {
-        let enabled = settingsStore.settings.monitoringEnabled
+    /// 设置里的「启用监控」必须**立即**启停 monitor。
+    /// 靠 20 秒轮询只是把问题延迟，用户关掉开关后定时器和订阅还会继续活一会儿。
+    func setMonitoring(_ enabled: Bool) {
         guard enabled != lastMonitoringEnabled else { return }
         lastMonitoringEnabled = enabled
         if enabled { monitor.start() } else { monitor.stop() }
+    }
+
+    /// 兜底：设置也可能被别的路径改动，轮询作为二重保险。
+    private func syncMonitorLifecycle() {
+        setMonitoring(settingsStore.settings.monitoringEnabled)
     }
 
     /// 挂件内容会变（0 条 TODO ↔ 3 条），面板尺寸必须跟着 SwiftUI 的固有尺寸走，
@@ -96,10 +101,13 @@ final class AppCoordinator: NSObject, ObservableObject {
         guard fitting.height > 1,
               abs(panel.frame.height - fitting.height) > 1 ||
               abs(panel.frame.width - fitting.width) > 1 else { return }
-        // 保持左上角不动地改尺寸，避免挂件在屏幕上跳
+        // 保持左上角不动地改尺寸，避免挂件在屏幕上跳。
+        // 这是程序性移动，不应被当成用户拖动而写进设置。
         let topLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        isProgrammaticMove = true
         panel.setContentSize(fitting)
         panel.setFrameTopLeftPoint(topLeft)
+        isProgrammaticMove = false
     }
 
     // MARK: - 菜单栏
@@ -194,7 +202,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     }
 
     private func widgetMoved() {
-        guard let f = widgetPanel?.frame else { return }
+        guard !isProgrammaticMove, let f = widgetPanel?.frame else { return }
         settingsStore.settings.widgetFrame =
             AppSettings.WidgetFrame(x: f.origin.x, y: f.origin.y, width: f.width, height: f.height)
     }
@@ -220,7 +228,8 @@ final class AppCoordinator: NSObject, ObservableObject {
             let view = MainWindowView(
                 store: dayStore, settings: settingsStore, monitor: monitor, breaker: breaker,
                 onWidgetModeChange: { [weak self] m in self?.applyWidgetMode(m) },
-                onWidgetVisibilityChange: { [weak self] v in self?.setWidgetVisible(v) })
+                onWidgetVisibilityChange: { [weak self] v in self?.setWidgetVisible(v) },
+                onMonitoringChange: { [weak self] on in self?.setMonitoring(on) })
 
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
