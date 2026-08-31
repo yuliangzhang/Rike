@@ -343,11 +343,14 @@ func usageEventsSorted(_ events: [UsageEvent]) -> [UsageEvent] {
 
 /// reducer 的纯函数产物，可随时从事件日志重建。
 struct UsageInterval: Codable, Identifiable, Hashable, Sendable {
-    var id: UUID = UUID()
     var bundleId: String
     var appName: String
     var start: Date
     var end: Date
+
+    /// **确定性** id，不用随机 UUID —— 否则同样的事件重跑 reducer 会产生不等的结果，
+    /// 幂等性就无法断言。
+    var id: String { "\(bundleId)|\(Int(start.timeIntervalSince1970))|\(Int(end.timeIntervalSince1970))" }
 
     var seconds: TimeInterval { max(0, end.timeIntervalSince(start)) }
 }
