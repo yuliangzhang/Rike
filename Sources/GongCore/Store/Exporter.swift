@@ -84,13 +84,15 @@ actor Exporter {
                 // 4) 内容先写进临时文件（耗时部分），锁内最后只做「复核 + rename」，
                 //    把窗口从「整个写盘过程」压缩到两个几乎瞬时的操作。
                 let tmp = try FileStore.prepareTempSync(Data(text.utf8), for: target)
+                // 任何提前退出（包括复核抛错）都必须清掉临时文件，否则导出目录会积垃圾。
+                var committed = false
+                defer { if !committed { FileStore.discardTempSync(tmp) } }
+
                 guard let (_, recheck) = try FileStore.readSyncWithHash(target),
-                      recheck == currentHash else {
-                    FileStore.discardTempSync(tmp)
-                    return .conflict(target)
-                }
-                do { try FileStore.commitTempSync(tmp, to: target) }
-                catch { FileStore.discardTempSync(tmp); throw error }
+                      recheck == currentHash else { return .conflict(target) }
+
+                try FileStore.commitTempSync(tmp, to: target)
+                committed = true
                 return .updated(target)
             }
 
