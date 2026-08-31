@@ -59,20 +59,15 @@ struct GongTableView: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
 
-            TextField("", text: Binding(
-                get: { todo.text },
-                set: { v in
-                    store.mutate { rec in
-                        if let i = rec.todos.firstIndex(where: { $0.id == todo.id }) {
-                            rec.todos[i].text = v
-                        }
+            BufferedTextField(value: todo.text, font: .system(size: 13)) { v in
+                store.mutate { rec in
+                    if let i = rec.todos.firstIndex(where: { $0.id == todo.id }) {
+                        rec.todos[i].text = v
                     }
-                }))
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundStyle(todo.status == .done ? .secondary : .primary)
-                .strikethrough(todo.status == .done, color: .secondary)
-                .focused($focusedField, equals: .todo(todo.id))
+                }
+            }
+            .foregroundStyle(todo.status == .done ? .secondary : .primary)
+            .strikethrough(todo.status == .done, color: .secondary)
 
             Button {
                 store.mutate { rec in rec.todos.removeAll { $0.id == todo.id } }
@@ -185,10 +180,9 @@ struct GongTableView: View {
                     timeField(text: GongTime.formatMinutes(blk.endMinute)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: $0.startMinute, end: m) }
                     }
-                    TextField("内容", text: Binding(
-                        get: { blk.title },
-                        set: { v in updatePlanned(blk.id) { $0.title = v } }))
-                        .textFieldStyle(.plain).font(.system(size: 12))
+                    BufferedTextField(placeholder: "内容", value: blk.title) { v in
+                        updatePlanned(blk.id) { $0.title = v }
+                    }
                     deleteButton { store.mutate { $0.planned.removeAll { $0.id == blk.id } } }
                 }
             }
@@ -217,16 +211,13 @@ struct GongTableView: View {
                     Text(actualRange(blk))
                         .font(Theme.monoSized(11)).foregroundStyle(.secondary)
                         .frame(width: 96, alignment: .leading)
-                    TextField("内容", text: Binding(
-                        get: { blk.title },
-                        set: { v in
-                            store.mutate { rec in
-                                if let i = rec.actual.firstIndex(where: { $0.id == blk.id }) {
-                                    rec.actual[i].title = v
-                                }
+                    BufferedTextField(placeholder: "内容", value: blk.title) { v in
+                        store.mutate { rec in
+                            if let i = rec.actual.firstIndex(where: { $0.id == blk.id }) {
+                                rec.actual[i].title = v
                             }
-                        }))
-                        .textFieldStyle(.plain).font(.system(size: 12))
+                        }
+                    }
                     deleteButton { store.mutate { $0.actual.removeAll { $0.id == blk.id } } }
                 }
             }
@@ -411,8 +402,7 @@ private struct ClarityRow: View {
             Text(label)
                 .font(Theme.monoSized(9)).foregroundStyle(.tertiary)
                 .frame(width: 168, alignment: .leading)
-            TextField("", text: Binding(get: { value }, set: set))
-                .textFieldStyle(.plain).font(.system(size: 12))
+            BufferedTextField(value: value, onChange: set)
         }
     }
 

@@ -146,3 +146,90 @@ final class UsageReducerTests: XCTestCase {
         XCTAssertEqual(totals[.other] ?? 0, 3600, accuracy: 1, "用户覆盖的分类要生效")
     }
 }
+
+/// 状态机边界：这些是最容易出现「重复计时」或「漏计」的路径。
+final class UsageReducerStateMachineTests: XCTestCase {
+    private let perth = "Australia/Perth"
+    private var key: DayKey { DayKey(date: "2026-09-01", timeZoneIdentifier: perth) }
+    private var seq = 0
+    override func setUp() { seq = 0 }
+
+    private func ev(_ e: UsageEvent.Kind, _ t: Date, _ bid: String? = nil, _ name: String? = nil) -> UsageEvent {
+        seq += 1
+        return UsageEvent(t: t, e: e, runId: "run-1", seq: seq, tz: perth, bundleId: bid, name: name)
+    }
+    private var dayStartUTC: Date { utc(2026, 8, 31, 16, 0) }
+    private func local(_ h: Int, _ mi: Int) -> Date {
+        dayStartUTC.addingTimeInterval(TimeInterval(h * 3600 + mi * 60))
+    }
+    private func total(_ d: UsageDay) -> TimeInterval { d.intervals.reduce(0) { $0 + $1.seconds } }
+
+    func testWakeThenActivateDoesNotDoubleCount() {
+        let events = [
+            ev(.activate, local(9, 0), "com.apple.dt.Xcode", "Xcode"),
+            ev(.sleep,    local(9, 30)),
+            ev(.wake,     local(10, 0)),
+            ev(.activate, local(10, 0), "com.apple.dt.Xcode", "Xcode"),   // 唤醒后补发采样
+            ev(.appStop,  local(10, 30))
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(total(day), 3600, accuracy: 2,
+                       "9:00–9:30 与 10:00–10:30 共 60 分钟；睡眠期间不得计入，唤醒也不得重复开段")
+    }
+
+    func testActivateWhileSuspendedResumesCorrectly() {
+        // 空闲中直接切换应用，没有显式 idleEnd
+        let events = [
+            ev(.activate,  local(9, 0), "com.apple.dt.Xcode", "Xcode"),
+            ev(.idleStart, local(9, 10)),
+            ev(.activate,  local(9, 40), "com.google.Chrome", "Chrome"),
+            ev(.appStop,   local(10, 0))
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(total(day), 600 + 1200, accuracy: 2,
+                       "Xcode 10 分钟 + Chrome 20 分钟，空闲的 30 分钟不计")
+        XCTAssertEqual(day.intervals.count, 2)
+    }
+
+    func testSleepWithoutWakeIsNotCounted() {
+        let events = [
+            ev(.activate, local(9, 0), "com.apple.dt.Xcode", "Xcode"),
+            ev(.sleep,    local(9, 20))
+            // 之后一直没醒
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(total(day), 1200, accuracy: 2, "睡眠之后不得继续累计")
+        XCTAssertFalse(day.truncated, "已被 sleep 正常闭合，不算截断")
+    }
+
+    func testRepeatedSameAppActivatePreservesTotal() {
+        let events = [
+            ev(.activate, local(9, 0),  "com.apple.dt.Xcode", "Xcode"),
+            ev(.activate, local(9, 20), "com.apple.dt.Xcode", "Xcode"),
+            ev(.activate, local(9, 40), "com.apple.dt.Xcode", "Xcode"),
+            ev(.appStop,  local(10, 0))
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(total(day), 3600, accuracy: 2, "重复 activate 不得丢失或重复总时长")
+    }
+
+    func testSystemTransientAppsAreFiltered() {
+        let events = [
+            ev(.activate, local(9, 0),  "com.apple.loginwindow", "loginwindow"),
+            ev(.activate, local(9, 5),  "com.apple.dt.Xcode", "Xcode"),
+            ev(.activate, local(9, 6),  "com.apple.controlcenter", "Control Center"),
+            ev(.activate, local(9, 7),  "com.apple.dt.Xcode", "Xcode"),
+            ev(.appStop,  local(9, 30))
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertTrue(day.intervals.allSatisfy { !GongPaths.isIgnored($0.bundleId) },
+                      "系统瞬时进程不得进入统计")
+        XCTAssertEqual(total(day), 60 + 1380, accuracy: 2, "只应统计 Xcode 的两段")
+    }
+
+    func testEmptyEventsProduceEmptyDay() {
+        let day = UsageReducer.reduce(events: [], for: key)
+        XCTAssertTrue(day.intervals.isEmpty)
+        XCTAssertFalse(day.truncated)
+    }
+}

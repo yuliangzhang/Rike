@@ -27,9 +27,11 @@ struct RibbonView: View {
         GeometryReader { geo in
             let w = max(1, geo.size.width - labelWidth)
             ZStack(alignment: .topLeading) {
-                ForEach(Array(projection.ticks.enumerated()), id: \.offset) { _, tick in
-                    // 每 2 小时标一次，避免拥挤；秋令时重复的 01 会出现两次，这是事实
-                    if Int(tick.label) ?? 0 % 2 == 0 || projection.ticks.count <= 13 {
+                ForEach(Array(projection.ticks.enumerated()), id: \.offset) { idx, tick in
+                    // 每 2 个刻度标一次，避免拥挤；秋令时重复的 01 会出现两次，这是事实。
+                    // 注意：不能用 `Int(tick.label) ?? 0 % 2 == 0` —— `%` 优先级高于 `??`，
+                    // 那会被解析成 `(Int(label) ?? 0) == 0`，结果只有 00 点会显示。
+                    if idx % 2 == 0 {
                         Text(tick.label)
                             .font(Theme.monoSized(9))
                             .foregroundStyle(.tertiary)

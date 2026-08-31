@@ -26,14 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // 同步等待落盘，避免退出时丢失最后一次编辑。
-        guard let c = coordinator else { return }
-        let sem = DispatchSemaphore(value: 0)
-        Task { @MainActor in
-            await c.shutdown()
-            sem.signal()
+        // 必须全同步。这里已经在主线程上，若用 DispatchSemaphore 等待一个
+        // @MainActor Task，那个 Task 永远拿不到主线程 —— 死锁，最后的编辑会丢。
+        MainActor.assumeIsolated {
+            coordinator?.shutdownSynchronously()
         }
-        _ = sem.wait(timeout: .now() + 3)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

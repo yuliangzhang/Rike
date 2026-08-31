@@ -51,9 +51,33 @@ final class UsageMonitor: ObservableObject {
         }
     }
 
+    /// 同步停止：退出路径专用，appStop 事件直接落盘，不经过 Task。
+    func stopSynchronously() {
+        guard isRunning else { return }
+        seq += 1
+        let ev = UsageEvent(t: Date(), e: .appStop, runId: runId, seq: seq,
+                            tz: TimeZone.current.identifier, bundleId: nil, name: nil)
+        if let line = try? JSONEncoder.gongLine.encode(ev),
+           var text = String(data: line, encoding: .utf8) {
+            text.append("\n")
+            let url = GongPaths.eventsFile(GongTime.dayKey(Date()))
+            let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            if fd >= 0 {
+                _ = text.withCString { Darwin.write(fd, $0, strlen($0)) }
+                _ = fsync(fd)
+                close(fd)
+            }
+        }
+        teardown()
+    }
+
     func stop() {
         guard isRunning else { return }
         emit(.appStop)
+        teardown()
+    }
+
+    private func teardown() {
         heartbeatTimer?.invalidate(); heartbeatTimer = nil
         idleTimer?.invalidate(); idleTimer = nil
         let center = NSWorkspace.shared.notificationCenter

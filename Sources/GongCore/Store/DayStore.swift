@@ -144,4 +144,19 @@ final class DayStore: ObservableObject {
     }
 
     func dismissNotice() { notice = nil }
+
+    /// 退出时的同步落盘。**不能用 await** —— `applicationWillTerminate` 运行在主线程，
+    /// 若在此阻塞等待 @MainActor Task，Task 永远拿不到主线程，必然死锁。
+    func saveSynchronouslyForTermination() {
+        saveTask?.cancel()
+        saveTask = nil
+        guard isDirty else { return }
+        do {
+            let data = try FileStore.encodeSync(record)
+            try FileStore.writeAtomicSync(data, to: GongPaths.dayFile(record.date))
+            isDirty = false
+        } catch {
+            NSLog("Gong: 退出前保存失败 %@", String(describing: error))
+        }
+    }
 }

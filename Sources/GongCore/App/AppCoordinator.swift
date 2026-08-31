@@ -43,6 +43,15 @@ final class AppCoordinator: NSObject, ObservableObject {
         await settingsStore.saveNow()
     }
 
+    /// 供 `applicationWillTerminate` 调用：全同步，不涉及任何 await。
+    func shutdownSynchronously() {
+        uiTimer?.invalidate()
+        uiTimer = nil
+        monitor.stopSynchronously()
+        dayStore.saveSynchronouslyForTermination()
+        settingsStore.saveSynchronouslyForTermination()
+    }
+
     private func tick() {
         dayStore.reloadUsage()
         // 跨日：自动切到新的一天，阻断器状态随之归零（「不许跨过一次睡眠」）

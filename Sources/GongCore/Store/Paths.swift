@@ -4,8 +4,12 @@ import Foundation
 enum GongPaths {
     static let bundleIdentifier = "com.ybjv.gong"
 
+    /// 仅供测试覆盖，避免单元测试写进用户真实数据目录。生产代码永远不设置它。
+    nonisolated(unsafe) static var overrideRoot: URL?
+
     /// <ApplicationSupport>/com.ybjv.gong/
     static var root: URL {
+        if let o = overrideRoot { return o }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Application Support", isDirectory: true)

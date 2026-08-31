@@ -197,6 +197,42 @@ actor FileStore {
         return true
     }
 
+    /// **同步**原子写。仅供 `applicationWillTerminate` 这种不能 await 的路径使用。
+    /// 逻辑与 `writeAtomic` 一致：同目录 temp → fsync → rename → fsync 目录。
+    nonisolated static func writeAtomicSync(_ data: Data, to url: URL) throws {
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let tmp = dir.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+
+        guard fm.createFile(atPath: tmp.path, contents: nil) else {
+            throw FileStoreError.writeFailed(tmp.path)
+        }
+        do {
+            let fh = try FileHandle(forWritingTo: tmp)
+            defer { try? fh.close() }
+            try fh.write(contentsOf: data)
+            try fh.synchronize()
+        } catch {
+            try? fm.removeItem(at: tmp)
+            throw error
+        }
+        if rename(tmp.path, url.path) != 0 {
+            let e = errno
+            try? fm.removeItem(at: tmp)
+            throw FileStoreError.renameFailed(url.path, errno: e)
+        }
+        let fd = open(dir.path, O_RDONLY)
+        if fd >= 0 { _ = fsync(fd); close(fd) }
+    }
+
+    nonisolated static func encodeSync<T: Encodable>(_ value: T) throws -> Data {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try e.encode(value)
+    }
+
     func removeItem(at url: URL) throws {
         guard fm.fileExists(atPath: url.path) else { return }
         try fm.removeItem(at: url)
@@ -208,4 +244,14 @@ actor FileStore {
             .map { String($0.dropLast(5)) }
             .sorted()
     }
+}
+
+extension JSONEncoder {
+    /// NDJSON 单行编码器（同步路径用）。
+    static let gongLine: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        e.outputFormatting = [.sortedKeys]
+        return e
+    }()
 }

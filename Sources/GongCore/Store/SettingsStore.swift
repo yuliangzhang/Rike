@@ -38,4 +38,12 @@ final class SettingsStore: ObservableObject {
         let snapshot = settings
         try? await store.write(snapshot, to: GongPaths.settingsFile)
     }
+
+    /// 退出时的同步落盘，理由同 DayStore。
+    func saveSynchronouslyForTermination() {
+        saveTask?.cancel()
+        saveTask = nil
+        guard let data = try? FileStore.encodeSync(settings) else { return }
+        try? FileStore.writeAtomicSync(data, to: GongPaths.settingsFile)
+    }
 }
