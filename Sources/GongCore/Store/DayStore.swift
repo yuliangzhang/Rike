@@ -24,6 +24,9 @@ final class DayStore: ObservableObject {
     private let store = FileStore.shared
     private var saveTask: Task<Void, Never>?
     private let debounceNanos: UInt64 = 1_500_000_000
+    /// 最后一次**成功落盘**的 revision。用它判断 dirty，而不是无条件清标志：
+    /// 保存 I/O 期间用户可能又改了，旧保存返回后不能把新改动标成 clean。
+    private var savedRevision: Int = 0
 
     var settingsProvider: () -> AppSettings = { AppSettings() }
 
@@ -33,12 +36,26 @@ final class DayStore: ObservableObject {
 
     // MARK: - 载入
 
-    func load(dayKey: DayKey) async {
-        await flushPendingSave()
+    /// 切换日期。**若当前未保存的内容落盘失败，中止切换**——
+    /// 否则内存里的编辑会被新日期的数据直接替换掉，用户看不到任何东西就没了。
+    @discardableResult
+    func load(dayKey: DayKey) async -> Bool {
+        if isDirty {
+            let ok = await saveNow()
+            guard ok else {
+                notice = Notice(level: .warning,
+                                text: "当前内容尚未保存成功，已取消切换日期。请先解决保存失败的原因。")
+                return false
+            }
+        }
+        saveTask?.cancel(); saveTask = nil
+
         do {
             try await store.ensureDirectories()
             if var loaded = try await store.read(DayRecord.self, from: GongPaths.dayFile(dayKey.date)) {
                 loaded.normalize()
+                // 采用**存盘记录自带的时区**：那一天是在哪个时区记录的，
+                // 回看时就该用那个时区投影。旅行后不应该用当前时区去重算历史。
                 record = loaded
             } else {
                 record = DayRecord(key: dayKey)
@@ -48,7 +65,9 @@ final class DayStore: ObservableObject {
             notice = Notice(level: .warning, text: "读取当日记录失败：\(error.localizedDescription)")
         }
         isDirty = false
+        savedRevision = record.revision
         await refreshUsage()
+        return true
     }
 
     func reloadUsage() { Task { await refreshUsage() } }
@@ -89,27 +108,27 @@ final class DayStore: ObservableObject {
         }
     }
 
-    /// 强制立即落盘（退出 / 失焦 / 切日期时调用）。
-    func saveNow() async {
+    /// 强制立即落盘。返回是否成功——调用方（如切日期）必须据此决定要不要继续。
+    @discardableResult
+    func saveNow() async -> Bool {
         saveTask?.cancel()
         saveTask = nil
-        let snapshot = record          // 在 MainActor 上取，必然是最新的
+        let snapshot = record                 // 在 MainActor 上取，必然是最新的
         do {
             try await store.write(snapshot, to: GongPaths.dayFile(snapshot.date))
-            isDirty = false
         } catch {
             notice = Notice(level: .warning, text: "保存失败：\(error.localizedDescription)")
-            return
+            return false
         }
+        savedRevision = max(savedRevision, snapshot.revision)
+        // 保存期间若又发生了编辑（revision 变大），仍然是 dirty，不能清标志
+        isDirty = record.revision > savedRevision
+        if isDirty { scheduleSave() }
+
         if settingsProvider().autoExport {
             await exportNow(silentWhenUnchanged: true)
         }
-    }
-
-    private func flushPendingSave() async {
-        if isDirty { await saveNow() }
-        saveTask?.cancel()
-        saveTask = nil
+        return true
     }
 
     // MARK: - 导出
@@ -154,6 +173,7 @@ final class DayStore: ObservableObject {
         do {
             let data = try FileStore.encodeSync(record)
             try FileStore.writeAtomicSync(data, to: GongPaths.dayFile(record.date))
+            savedRevision = record.revision
             isDirty = false
         } catch {
             NSLog("Gong: 退出前保存失败 %@", String(describing: error))

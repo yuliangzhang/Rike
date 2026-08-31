@@ -26,6 +26,8 @@ final class UsageMonitor: ObservableObject {
     private var heartbeatTimer: Timer?
     private var idleTimer: Timer?
     private var observers: [NSObjectProtocol] = []
+    /// 串行写入链，保证事件按顺序落盘且退出前可等待。
+    private var writeChain: Task<Void, Never>?
 
     var settingsProvider: () -> AppSettings = { AppSettings() }
     /// 事件写入后回调，供阻断器/UI 刷新。
@@ -107,18 +109,34 @@ final class UsageMonitor: ObservableObject {
         observe(NSWorkspace.didActivateApplicationNotification) { [weak self] in
             self?.sampleFrontmost(reason: "activate")
         }
-        observe(NSWorkspace.willSleepNotification)              { [weak self] in self?.emit(.sleep) }
+        observe(NSWorkspace.willSleepNotification)              { [weak self] in self?.suspend(.sleep) }
         observe(NSWorkspace.didWakeNotification)                { [weak self] in
-            self?.emit(.wake); self?.sampleFrontmost(reason: "wake")
+            self?.resume(reason: "wake")
         }
-        observe(NSWorkspace.screensDidSleepNotification)        { [weak self] in self?.emit(.sleep) }
+        observe(NSWorkspace.screensDidSleepNotification)        { [weak self] in self?.suspend(.sleep) }
         observe(NSWorkspace.screensDidWakeNotification)         { [weak self] in
-            self?.emit(.wake); self?.sampleFrontmost(reason: "screenWake")
+            self?.resume(reason: "screenWake")
         }
-        observe(NSWorkspace.sessionDidResignActiveNotification) { [weak self] in self?.emit(.sessionInactive) }
+        observe(NSWorkspace.sessionDidResignActiveNotification) { [weak self] in self?.suspend(.sessionInactive) }
         observe(NSWorkspace.sessionDidBecomeActiveNotification) { [weak self] in
-            self?.emit(.sessionActive); self?.sampleFrontmost(reason: "sessionActive")
+            self?.resume(reason: "sessionActive", kind: .sessionActive)
         }
+    }
+
+    /// 恢复：唤醒 / 会话激活。重新采样并把连续前台的起点重置为**现在**。
+    private func resume(reason: String, kind: UsageEvent.Kind = .wake) {
+        emit(kind)
+        currentBundleId = nil        // 强制下一次采样重新记一条 activate
+        sampleFrontmost(reason: reason)
+        if currentSince == nil, currentBundleId != nil { currentSince = Date() }
+    }
+
+    /// 挂起：睡眠 / 锁屏 / 会话失活。
+    /// **必须清掉 currentSince** —— 否则睡了 8 小时醒来，阻断器会把这 8 小时
+    /// 当成「连续前台 480 分钟」并立刻误报。
+    private func suspend(_ kind: UsageEvent.Kind) {
+        emit(kind)
+        currentSince = nil
     }
 
     /// 启动 / 唤醒 / 会话恢复时都必须主动采样：
@@ -128,8 +146,18 @@ final class UsageMonitor: ObservableObject {
         let bid = app.bundleIdentifier ?? "unknown.\(app.processIdentifier)"
         let name = app.localizedName ?? bid
 
-        guard !GongPaths.isIgnored(bid) else { return }   // 过滤自身与系统瞬时进程
         guard bid != currentBundleId else { return }      // 未变则不重复记
+
+        if GongPaths.isIgnored(bid) {
+            // 关键：**仍然要写事件**。若在这里直接 return，用户点开 Gong 或控制中心
+            // 待上 20 分钟，reducer 看不到边界，那 20 分钟会全部算给上一个应用。
+            // 写进去，由 reducer 的过滤逻辑闭合区间并把 currentApp 置空。
+            currentBundleId = nil
+            currentAppName = nil
+            currentSince = nil
+            emit(.activate, bundleId: bid, name: name)
+            return
+        }
 
         currentBundleId = bid
         currentAppName = name
@@ -169,10 +197,24 @@ final class UsageMonitor: ObservableObject {
         let ev = UsageEvent(t: date, e: kind, runId: runId, seq: seq,
                             tz: TimeZone.current.identifier, bundleId: bundleId, name: name)
         onEvent?(ev)
-        let url = GongPaths.eventsFile(GongTime.dayKey(date))
-        Task.detached(priority: .utility) { [store] in
+        enqueueWrite(ev)
+    }
+
+    /// 事件写入必须**串行且可等待**。
+    /// 原来用 `Task.detached` 各写各的：既不保证落盘顺序，`stop()` 也不等它们完成，
+    /// 正常退出时最后的 appStop 事件可能丢掉。
+    private func enqueueWrite(_ ev: UsageEvent) {
+        let previous = writeChain
+        writeChain = Task { [store] in
+            _ = await previous?.result
+            let url = GongPaths.eventsFile(GongTime.dayKey(ev.t))
             try? await store.appendEvent(ev, to: url)
         }
+    }
+
+    /// 等待已排队的事件全部落盘。
+    func drainWrites() async {
+        _ = await writeChain?.result
     }
 
     /// 当前应用已连续在前台多久（秒）。空闲时为 0。

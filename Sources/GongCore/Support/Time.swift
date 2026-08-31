@@ -13,24 +13,35 @@ enum GongTime {
 
     // MARK: 日键
 
-    private static let dayKeyFormatter: DateFormatter = {
+    // DateFormatter 不是线程安全的。原来的写法是「共享一个实例、每次调用改 timeZone」，
+    // 而 dayKey 会同时被主线程和监控的写入链调用 —— 两边串时区就会把事件归档到错误的日期。
+    // 这里按时区缓存独立实例，并用锁保护缓存本身。
+    private static let formatterLock = NSLock()
+    nonisolated(unsafe) private static var formatterCache: [String: DateFormatter] = [:]
+
+    private static func formatter(for timeZone: TimeZone) -> DateFormatter {
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        if let f = formatterCache[timeZone.identifier] { return f }
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = timeZone
+        formatterCache[timeZone.identifier] = f
         return f
-    }()
+    }
 
     /// "2026-08-31"，按传入时区（默认当前）的本地日历日。
     static func dayKey(_ date: Date, timeZone: TimeZone = .current) -> String {
-        let f = dayKeyFormatter
-        f.timeZone = timeZone
+        let f = formatter(for: timeZone)
+        formatterLock.lock(); defer { formatterLock.unlock() }
         return f.string(from: date)
     }
 
     static func date(fromDayKey key: String, timeZone: TimeZone = .current) -> Date? {
-        let f = dayKeyFormatter
-        f.timeZone = timeZone
+        let f = formatter(for: timeZone)
+        formatterLock.lock(); defer { formatterLock.unlock() }
         return f.date(from: key)
     }
 

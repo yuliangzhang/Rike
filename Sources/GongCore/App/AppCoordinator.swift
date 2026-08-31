@@ -15,6 +15,9 @@ final class AppCoordinator: NSObject, ObservableObject {
     private var alertPanel: NSPanel?
     private var statusItem: NSStatusItem?
     private var uiTimer: Timer?
+    private var moveObserver: NSObjectProtocol?
+    /// 上一次已知的监控开关状态，用于驱动 monitor 的启停。
+    private var lastMonitoringEnabled: Bool = true
 
     // MARK: - 启动
 
@@ -28,7 +31,8 @@ final class AppCoordinator: NSObject, ObservableObject {
 
         installStatusItem()
         if settingsStore.settings.widgetVisible { showWidget() }
-        if settingsStore.settings.monitoringEnabled { monitor.start() }
+        lastMonitoringEnabled = settingsStore.settings.monitoringEnabled
+        if lastMonitoringEnabled { monitor.start() }
 
         uiTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -38,22 +42,28 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func shutdown() async {
         uiTimer?.invalidate()
+        uiTimer = nil
         monitor.stop()
-        await dayStore.saveNow()
+        await monitor.drainWrites()      // 等最后的 appStop 事件真正落盘
+        _ = await dayStore.saveNow()
         await settingsStore.saveNow()
+        removeObservers()
     }
 
     /// 供 `applicationWillTerminate` 调用：全同步，不涉及任何 await。
     func shutdownSynchronously() {
         uiTimer?.invalidate()
         uiTimer = nil
+        removeObservers()
         monitor.stopSynchronously()
         dayStore.saveSynchronouslyForTermination()
         settingsStore.saveSynchronouslyForTermination()
     }
 
     private func tick() {
+        syncMonitorLifecycle()
         dayStore.reloadUsage()
+        resizeWidgetToFit()
         // 跨日：自动切到新的一天，阻断器状态随之归零（「不许跨过一次睡眠」）
         let today = GongTime.dayKey(Date())
         if dayStore.record.date != today, mainWindow?.isVisible != true {
@@ -65,6 +75,29 @@ final class AppCoordinator: NSObject, ObservableObject {
             hideAlertPanel()
         }
         updateStatusItemTitle()
+    }
+
+    /// 设置里的「启用监控」必须真的启停 monitor —— 只让 emit 短路，
+    /// 定时器和通知订阅仍在跑，等于开关没生效。
+    private func syncMonitorLifecycle() {
+        let enabled = settingsStore.settings.monitoringEnabled
+        guard enabled != lastMonitoringEnabled else { return }
+        lastMonitoringEnabled = enabled
+        if enabled { monitor.start() } else { monitor.stop() }
+    }
+
+    /// 挂件内容会变（0 条 TODO ↔ 3 条），面板尺寸必须跟着 SwiftUI 的固有尺寸走，
+    /// 否则要么裁切要么留白。
+    private func resizeWidgetToFit() {
+        guard let panel = widgetPanel, let host = panel.contentView else { return }
+        let fitting = host.fittingSize
+        guard fitting.height > 1,
+              abs(panel.frame.height - fitting.height) > 1 ||
+              abs(panel.frame.width - fitting.width) > 1 else { return }
+        // 保持左上角不动地改尺寸，避免挂件在屏幕上跳
+        let topLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        panel.setContentSize(fitting)
+        panel.setFrameTopLeftPoint(topLeft)
     }
 
     // MARK: - 菜单栏
@@ -134,7 +167,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 self?.showMainWindow()
             }
             let host = NSHostingView(rootView: view)
-            host.frame = panel.contentLayoutRect
+            host.sizingOptions = [.intrinsicContentSize]
             panel.contentView = host
             panel.setContentSize(host.fittingSize)
 
@@ -142,9 +175,10 @@ final class AppCoordinator: NSObject, ObservableObject {
                 panel.setFrameOrigin(NSPoint(x: f.x, y: f.y))
             }
             widgetPanel = panel
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(widgetMoved),
-                name: NSWindow.didMoveNotification, object: panel)
+            moveObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didMoveNotification, object: panel, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.widgetMoved() }
+                }
         }
         applyWidgetMode(settingsStore.settings.widgetMode)
         widgetPanel?.orderFrontRegardless()
@@ -152,7 +186,12 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func hideWidget() { widgetPanel?.orderOut(nil) }
 
-    @objc private func widgetMoved() {
+    private func removeObservers() {
+        if let o = moveObserver { NotificationCenter.default.removeObserver(o) }
+        moveObserver = nil
+    }
+
+    private func widgetMoved() {
         guard let f = widgetPanel?.frame else { return }
         settingsStore.settings.widgetFrame =
             AppSettings.WidgetFrame(x: f.origin.x, y: f.origin.y, width: f.width, height: f.height)

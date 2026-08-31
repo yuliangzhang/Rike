@@ -239,7 +239,7 @@
   <header class="mast">
     <div class="mast-row">
       <h1><span class="glyph">工</span>字表 Gong</h1>
-      <span class="stamp">Prototype v0.1 · macOS</span>
+      <span class="stamp">v1.0 · 已实现 · macOS 14+</span>
     </div>
     <p>
       桌面常驻的每日「工」字表：<strong>上横 TODO，中段左计划右实际，下横总结</strong>。
@@ -328,7 +328,7 @@
                 <div class="col-h"><span class="n">实际</span><span class="sum" id="sum-act">—</span></div>
                 <div class="row"><span class="tm">08:15 至 09:30</span><span class="tx">晨会（超时 30 分）</span></div>
                 <div class="row"><span class="tm">09:30 至 10:20</span><span class="tx">蜂箱监测数据分析</span></div>
-                <div class="row warn"><span class="tm">10:20 至 11:40</span><span class="tx">Google Chrome ⚠ 干扰 · 已记 V-2</span></div>
+                <div class="row warn"><span class="tm">10:20 至 11:40</span><span class="tx">Google Chrome</span></div>
                 <div class="row"><span class="tm">13:10 至 15:40</span><span class="tx">apis prime 原型：登录流</span></div>
                 <button class="addrow" type="button">＋ 新增 ／ ⟲ 从监控填充</button>
               </div>
@@ -338,7 +338,7 @@
           <!-- 工 下横 -->
           <div class="band bottom">
             <div class="band-head"><span class="t">今日总结</span>
-              <span class="achv"><span class="y">下限 ✓ 达成</span><span class="n">最重要 · 未达成</span></span>
+              <span class="achv"><span class="y">下限：已完成</span><span class="n">最重要：未记录</span></span>
             </div>
             <div class="sumgrid">
               <div class="sumcell">
@@ -351,7 +351,7 @@
               </div>
               <div class="sumcell">
                 <span class="lbl">注意力</span>
-                <span class="val">失控 1 次 · 80 分钟 · 触发 V-2<br><em>真正想逃开的：token 方案没定</em></span>
+                <span class="val">中断 1 次 · 80 分钟 · 触发 V-2<br><em>真正想逃开的：token 方案没定</em></span>
               </div>
             </div>
           </div>
@@ -365,7 +365,7 @@
           <div class="kv">
             <div><span class="l">今日在机时长</span><span class="v">7h 42m</span></div>
             <div><span class="l">专注</span><span class="v ok">5h 18m</span><span class="h">69%</span></div>
-            <div><span class="l">干扰</span><span class="v wr">1h 20m</span><span class="h">17%</span></div>
+            <div><span class="l">其他</span><span class="v wr">1h 20m</span><span class="h">17%</span></div>
             <div><span class="l">计划兑现率</span><span class="v">64<span style="font-size:13px">%</span></span><span class="h">实际落在计划块内的时间</span></div>
           </div>
 
@@ -382,7 +382,7 @@
             <div class="legend">
               <span><i style="background:var(--actual)"></i>专注</span>
               <span><i style="background:var(--plan)"></i>中性</span>
-              <span><i style="background:var(--warn)"></i>干扰</span>
+              <span><i style="background:var(--warn)"></i>其他</span>
               <span style="margin-left:auto">类别可在设置中逐个应用修改</span>
             </div>
           </div>
@@ -411,20 +411,20 @@
       <div class="tabpane" id="t-brk" hidden>
         <div class="stem" style="padding:20px 22px;display:flex;flex-direction:column;gap:16px">
           <div class="kv">
-            <div><span class="l">距上次失控</span><span class="v ok">6</span><span class="h">天</span></div>
-            <div><span class="l">本月最长一次</span><span class="v wr">80</span><span class="h">分钟（上月 4h 10m）</span></div>
-            <div><span class="l">只看这两个数</span><span class="h">第二个数在下降就是在赢，即使第一个被清零过很多次。不显示连续天数徽章。</span></div>
+            <div><span class="l">上次中断记录</span><span class="v ok">08-25</span><span class="h">日期，不是连续天数</span></div>
+            <div><span class="l">本月最长一次</span><span class="v wr">80</span><span class="h">分钟（上月 250 分钟）</span></div>
+            <div><span class="l">为什么不给连续天数</span><span class="h">连续天数是打卡计数器的变体。第二个数在下降就是在赢，即使第一个被清零过很多次。</span></div>
           </div>
 
           <div class="rule">
             <span class="k">唯一的硬规则</span>
-            <span class="t">任何一次失控，不许跨过一次睡眠。</span>
-            <p>跨日自动归零，不做连续天数展示——愧疚是 N-1 的燃料。</p>
+            <span class="t">任何一次中断，不许跨过一次睡眠。</span>
+            <p>跨日自动归零，不做连续天数展示——愧疚是 N-1 触发器的燃料。</p>
           </div>
 
           <div class="pnl">
             <h3>主动触发（监控 × 阻断器）</h3>
-            <p class="lede" style="font-size:13px">干扰类应用连续前台超过阈值时，挂件变色 + 菜单栏图标变化 + 一个<strong>非模态</strong>浮层。绝不用系统模态弹窗。</p>
+            <p class="lede" style="font-size:13px">「其他」类应用连续前台超过阈值时，挂件描边变色 + 菜单栏图标变化 + 一个<strong>非模态</strong>浮层。绝不用系统模态弹窗。</p>
             <div class="tscroll">
               <table>
                 <thead><tr><th>编号</th><th>触发场景</th><th>当场动作</th></tr></thead>
@@ -432,7 +432,7 @@
                   <tr><td class="c" style="color:var(--warn)">N-1</td><td>卡住了，不知道怎么办</td><td>打开模糊拆解器 → 4 栏 → 写入当日模糊清单</td></tr>
                   <tr><td class="c" style="color:var(--warn)">N-2</td><td>干完硬活想放松</td><td>提示预先指定的、有物理终点的休息</td></tr>
                   <tr><td class="c" style="color:var(--warn)">N-3</td><td>随手点开</td><td>记录环境工程漏洞位置</td></tr>
-                  <tr><td class="c" style="color:var(--actual)">V-1</td><td>想学东西却滑进短视频</td><td>自动检测：干扰应用前台 &gt; 15 分钟</td></tr>
+                  <tr><td class="c" style="color:var(--actual)">V-1</td><td>想学东西却滑进短视频</td><td>自动检测：「其他」类应用前台 &gt; 15 分钟</td></tr>
                   <tr><td class="c" style="color:var(--actual)">V-2</td><td>空档刷手机</td><td>同上，一键「记一笔」预填编号</td></tr>
                 </tbody>
               </table>
@@ -466,14 +466,14 @@
           <div class="wg-todo"><span class="m o">·</span><span>回 Liz 关于专家评审时间的邮件</span></div>
           <div class="wg-div"></div>
           <div class="wg-now">09:00–11:30　蜂箱监测数据分析</div>
-          <div class="wg-foot"><span class="f">● 专注 5h18m</span><span class="w">○ 干扰 1h20m</span></div>
+          <div class="wg-foot"><span class="f">● 专注 5h18m</span><span class="w">○ 其他 1h20m</span></div>
         </div>
       </div>
       <div class="note">
         <p><b>层级：</b>默认桌面层（像原生 widget，不挡工作窗口）；设置里可切「置顶」；全局快捷键 <span class="mono">⌥⌘G</span> 临时提前 2 秒——「一眼看到」而不长期挡路。</p>
         <p><b>内容：</b>最多 3 条 TODO，顺序为 下限 → 最重要 → 其余。<b>不显示「还有 N 条」</b>，避免制造压力。</p>
         <p><b>交互：</b>拖拽移动，位置持久化；所有 Space 可见；<b>点击 = 打开主窗口</b>并聚焦，即「点击后展开编辑」。</p>
-        <p><b>状态：</b>干扰应用超时时挂件整体变为琥珀色描边——这是唯一的主动视觉打扰。</p>
+        <p><b>状态：</b>「其他」类应用超时时挂件描边变为琥珀色——这是唯一的主动视觉打扰。</p>
       </div>
     </div>
   </section>
@@ -489,10 +489,10 @@
       <table>
         <thead><tr><th>原则</th><th>在 UI 上的具体含义</th><th>为什么</th></tr></thead>
         <tbody>
-          <tr><td class="c">用记录代替打卡</td><td>不显示连续天数徽章、不显示未完成红点、无「打卡成功」动效</td><td>打卡 → 认知闭合 → 为完成而完成 → 应付 → 放弃</td></tr>
+          <tr><td class="c">用记录代替打卡</td><td>仪表只给「上次中断的日期」，不给连续天数；无未完成红点、无打卡动效</td><td>打卡 → 认知闭合 → 为完成而完成 → 应付 → 放弃 → 愧疚</td></tr>
           <tr><td class="c">设下限不设上限</td><td>「下限」栏 placeholder 永远是「再累也做得到」；下限只能有一条</td><td>下限太高就不是下限，是伪装成下限的上限</td></tr>
           <tr><td class="c">少即是多</td><td>「最重要」硬性限一条，UI 不允许加第二条</td><td>把约束写进数据模型，而不是靠自觉</td></tr>
-          <tr><td class="c">中性不评价</td><td>失控记录与未达成项无感叹号、无表情、无鼓励语</td><td>愧疚是 N-1 触发器的燃料</td></tr>
+          <tr><td class="c">中性不评价</td><td>状态写「已完成／未记录」而非「达成／未达成」；无 ✓ ⚠ 感叹号表情鼓励语</td><td><code>false</code> 读作失败，<code>notRecorded</code> 读作事实</td></tr>
         </tbody>
       </table>
     </div>

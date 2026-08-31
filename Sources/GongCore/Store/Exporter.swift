@@ -17,20 +17,25 @@ enum ExportOutcome: Sendable, Equatable {
 
 /// Markdown 导出。**原则：宁可不导出，绝不覆盖。**
 ///
-/// ## 关于 TOCTOU（诚实说明）
+/// ## 关于 TOCTOU（诚实说明，不宣称已消除）
 ///
-/// 无法对「不合作的外部进程」做到真正的原子 check-and-write：任何进程都可能在我们
-/// 读取校验之后、rename 之前写入目标文件。因此本实现不宣称消除竞态，而是把暴露
-/// 压到最小并明确其边界：
+/// **这个竞态无法被彻底消除。** POSIX 没有提供「校验内容与替换文件」的原子操作，
+/// `flock` 只是劝告锁——只能约束同样加锁的进程（例如第二个 Gong 实例），
+/// 约束不了任意外部编辑器或云同步进程。因此本实现不宣称消除竞态，
+/// 而是把暴露压到最小并明确其边界：
 ///
 /// 1. 目标不存在 → `O_CREAT|O_EXCL` 独占创建，**不存在竞态**。
 /// 2. 目标存在但不是我们写的（无标记）或内容 hash 与上次导出不符
 ///    → **完全不碰原文件**，另存 `*.gong-conflict[-N].md`（同样 O_EXCL，
 ///    不覆盖旧冲突文件）。
-/// 3. 只有当标记与 hash **都**证明「这就是我们上次写的、且没人动过」时才原子替换。
-///    残余窗口 = 读取校验到 rename 之间的几百微秒；且此时文件内容本就是我们的产物。
+/// 3. 只有当标记与 hash **都**证明「这就是我们上次写的、且没人动过」时才原子替换，
+///    并且整段校验+写入放在同目录 `flock` 内、**在 rename 前再复核一次 hash**。
+///    残余窗口 = 最后一次复核到 rename 之间的几十微秒，且此时文件内容本就是我们的产物。
 /// 4. 自动导出默认关闭（`AppSettings.autoExport`），把写入次数从「每次编辑」
-///    降到「手动/收工」，进一步压缩暴露次数。
+///    降到「手动/收工」，把「有机会撞上」的次数也压到最低。
+///
+/// 如果你要的是**绝对**不覆盖，把 autoExport 关着并只用冲突文件流程即可 ——
+/// 但那样每天会堆出很多文件，可用性代价很大。当前取舍是刻意的。
 actor Exporter {
     static let shared = Exporter()
 
@@ -61,36 +66,49 @@ actor Exporter {
             return (.failed("创建失败：\(error.localizedDescription)"), nil)
         }
 
-        // 2) 目标已存在 → 校验它是否确实是我们上次写的且未被改动
-        let current: String
+        // 2) 目标已存在 → 在目录锁内校验 + 写入，并在 rename 前再复核一次
+        let expected = record.exportState
         do {
-            current = try await store.readString(target) ?? ""
+            let outcome: ExportOutcome? = try await store.withDirectoryLock(dir) { () -> ExportOutcome? in
+                guard let (current, currentHash) = try FileStore.readSyncWithHash(target) else {
+                    return nil                      // 期间被删了 → 退回创建流程
+                }
+                let isOurs = MarkdownRenderer.hasMarker(current)
+                let matches = expected.map { $0.path == target.path && $0.contentHash == currentHash } ?? false
+                guard isOurs && matches else { return .conflict(target) }   // 标记：需走冲突分支
+
+                // 3) 内容没变就不写盘 —— 少写一次就少一次暴露
+                if currentHash == newHash { return .unchanged(target) }
+
+                // 4) rename 前最后一刻再复核，把窗口压到最小
+                guard let (_, recheck) = try FileStore.readSyncWithHash(target),
+                      recheck == currentHash else { return .conflict(target) }
+
+                try FileStore.writeAtomicSync(Data(text.utf8), to: target)
+                return .updated(target)
+            }
+
+            switch outcome {
+            case .none:
+                // 校验期间目标消失，重新独占创建
+                if try await store.createExclusive(text, at: target) {
+                    return (.created(target),
+                            ExportState(path: target.path, contentHash: newHash, exportedAt: Date()))
+                }
+                return await writeConflict(text: text, dir: dir, dayKey: record.date, newHash: newHash)
+            case .conflict:
+                return await writeConflict(text: text, dir: dir, dayKey: record.date, newHash: newHash)
+            case .unchanged(let u):
+                return (.unchanged(u),
+                        ExportState(path: u.path, contentHash: newHash, exportedAt: Date()))
+            case .updated(let u):
+                return (.updated(u),
+                        ExportState(path: u.path, contentHash: newHash, exportedAt: Date()))
+            default:
+                return (.failed("导出状态异常"), nil)
+            }
         } catch {
-            return (.failed("无法读取目标文件：\(error.localizedDescription)"), nil)
-        }
-
-        let currentHash = FileStore.sha256(current)
-        let isOurs = MarkdownRenderer.hasMarker(current)
-        let matchesLastExport = record.exportState.map {
-            $0.path == target.path && $0.contentHash == currentHash
-        } ?? false
-
-        guard isOurs && matchesLastExport else {
-            return await writeConflict(text: text, dir: dir, dayKey: record.date, newHash: newHash)
-        }
-
-        // 3) 内容没变就不写盘 —— 少写一次就少一次暴露
-        if currentHash == newHash {
-            return (.unchanged(target),
-                    ExportState(path: target.path, contentHash: newHash, exportedAt: Date()))
-        }
-
-        do {
-            try await store.writeAtomic(Data(text.utf8), to: target)
-            return (.updated(target),
-                    ExportState(path: target.path, contentHash: newHash, exportedAt: Date()))
-        } catch {
-            return (.failed("写入失败：\(error.localizedDescription)"), nil)
+            return (.failed("导出失败：\(error.localizedDescription)"), nil)
         }
     }
 

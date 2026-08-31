@@ -5,12 +5,16 @@ enum FileStoreError: LocalizedError {
     case writeFailed(String)
     case renameFailed(String, errno: Int32)
     case openFailed(String, errno: Int32)
+    case syncFailed(String, errno: Int32)
+    case lockFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .writeFailed(let p):            return "写入失败：\(p)"
         case .renameFailed(let p, let e):     return "原子替换失败：\(p)（errno \(e)）"
         case .openFailed(let p, let e):       return "打开失败：\(p)（errno \(e)）"
+        case .syncFailed(let p, let e):       return "落盘同步失败：\(p)（errno \(e)）"
+        case .lockFailed(let p):              return "无法获得文件锁：\(p)"
         }
     }
 }
@@ -88,14 +92,15 @@ actor FileStore {
         }
 
         // 3. 同步目录项，防止断电后「已替换但目录项未落盘」
-        syncDirectory(dir)
+        try syncDirectory(dir)
     }
 
-    private func syncDirectory(_ dir: URL) {
+    /// 目录项同步。失败会抛出 —— 吞掉它等于向调用方谎称「已持久化」。
+    private func syncDirectory(_ dir: URL) throws {
         let fd = open(dir.path, O_RDONLY)
-        guard fd >= 0 else { return }
-        _ = fsync(fd)
-        close(fd)
+        guard fd >= 0 else { throw FileStoreError.openFailed(dir.path, errno: errno) }
+        defer { close(fd) }
+        if fsync(fd) != 0 { throw FileStoreError.syncFailed(dir.path, errno: errno) }
     }
 
     // MARK: - JSON
@@ -148,7 +153,7 @@ actor FileStore {
                 written += n
             }
         }
-        _ = fsync(fd)
+        if fsync(fd) != 0 { throw FileStoreError.syncFailed(url.path, errno: errno) }
     }
 
     /// 读取 NDJSON 事件日志。跳过损坏行而不是整体失败——崩溃时最后一行可能是半行。
@@ -180,21 +185,55 @@ actor FileStore {
             if errno == EEXIST { return false }
             throw FileStoreError.openFailed(url.path, errno: errno)
         }
-        defer { close(fd) }
+
+        // 写入过程中任何一步失败，都必须删掉这个刚建出来的文件。
+        // 否则会留下一个半截的目标文件，之后因「文件已存在」永远只能走冲突分支。
+        func cleanupAndThrow(_ error: Error) -> Error {
+            close(fd)
+            try? fm.removeItem(at: url)
+            return error
+        }
 
         let data = Array(text.utf8)
-        var written = 0
-        try data.withUnsafeBufferPointer { buf in
-            guard let base = buf.baseAddress else { return }
-            while written < data.count {
-                let n = Darwin.write(fd, base + written, data.count - written)
-                if n <= 0 { throw FileStoreError.writeFailed(url.path) }
-                written += n
+        do {
+            var written = 0
+            try data.withUnsafeBufferPointer { buf in
+                guard let base = buf.baseAddress else { return }
+                while written < data.count {
+                    let n = Darwin.write(fd, base + written, data.count - written)
+                    if n <= 0 { throw FileStoreError.writeFailed(url.path) }
+                    written += n
+                }
             }
+            if fsync(fd) != 0 { throw FileStoreError.syncFailed(url.path, errno: errno) }
+        } catch {
+            throw cleanupAndThrow(error)
         }
-        _ = fsync(fd)
-        syncDirectory(dir)
+        close(fd)
+
+        do { try syncDirectory(dir) }
+        catch { try? fm.removeItem(at: url); throw error }
         return true
+    }
+
+    // MARK: - 跨进程锁
+
+    /// 同目录 lock 文件 + `flock(LOCK_EX)`。
+    /// 只能约束同样使用该锁的进程（例如第二个 Gong 实例），**约束不了任意外部编辑器**。
+    func withDirectoryLock<T>(_ dir: URL, _ body: () throws -> T) throws -> T {
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let lockURL = dir.appendingPathComponent(".gong.lock")
+        let fd = open(lockURL.path, O_WRONLY | O_CREAT, 0o644)
+        guard fd >= 0 else { throw FileStoreError.lockFailed(lockURL.path) }
+        defer { flock(fd, LOCK_UN); close(fd) }
+        guard flock(fd, LOCK_EX) == 0 else { throw FileStoreError.lockFailed(lockURL.path) }
+        return try body()
+    }
+
+    /// 读取内容并同时返回其 hash，供导出前的最后一次校验使用。
+    func readWithHash(_ url: URL) throws -> (text: String, hash: String)? {
+        guard let t = try readString(url) else { return nil }
+        return (t, FileStore.sha256(t))
     }
 
     /// **同步**原子写。仅供 `applicationWillTerminate` 这种不能 await 的路径使用。
@@ -223,7 +262,21 @@ actor FileStore {
             throw FileStoreError.renameFailed(url.path, errno: e)
         }
         let fd = open(dir.path, O_RDONLY)
-        if fd >= 0 { _ = fsync(fd); close(fd) }
+        if fd >= 0 {
+            let ok = fsync(fd) == 0
+            close(fd)
+            if !ok { throw FileStoreError.syncFailed(dir.path, errno: errno) }
+        } else {
+            throw FileStoreError.openFailed(dir.path, errno: errno)
+        }
+    }
+
+    /// 同步读取并计算 hash，供导出的锁内校验使用（锁内不能 await）。
+    nonisolated static func readSyncWithHash(_ url: URL) throws -> (String, String)? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        return (text, sha256(text))
     }
 
     nonisolated static func encodeSync<T: Encodable>(_ value: T) throws -> Data {
