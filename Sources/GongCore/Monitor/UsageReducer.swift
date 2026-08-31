@@ -63,8 +63,8 @@ enum UsageReducer {
             case .activate:
                 lastAlive = ev.t
                 closeCurrent(at: ev.t)
-                guard let bid = ev.bundleId, bid != GongPaths.bundleIdentifier else {
-                    currentApp = nil          // 过滤 Gong 自身，不污染统计
+                guard let bid = ev.bundleId, !GongPaths.isIgnored(bid) else {
+                    currentApp = nil          // 过滤自身与系统瞬时进程，不污染统计
                     continue
                 }
                 currentApp = (bid, ev.name ?? bid)

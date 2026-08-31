@@ -40,4 +40,22 @@ enum GongPaths {
     }
 
     static var allDirectories: [URL] { [root, daysDir, eventsDir, usageDir] }
+
+    /// 系统瞬时进程：登录窗口、控制中心、Spotlight、Dock 等。
+    /// 它们会短暂成为前台应用，计入统计只会制造噪音。
+    static let ignoredBundleIds: Set<String> = [
+        bundleIdentifier,
+        "com.apple.loginwindow",
+        "com.apple.WindowManager",
+        "com.apple.controlcenter",
+        "com.apple.notificationcenterui",
+        "com.apple.dock",
+        "com.apple.systemuiserver",
+        "com.apple.Spotlight",
+        "com.apple.ScreenSaver.Engine",
+        "com.apple.SecurityAgent",
+        "com.apple.CoreAuthUI"
+    ]
+
+    static func isIgnored(_ bundleId: String) -> Bool { ignoredBundleIds.contains(bundleId) }
 }
