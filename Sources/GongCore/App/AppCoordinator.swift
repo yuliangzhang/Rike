@@ -133,18 +133,29 @@ final class AppCoordinator: NSObject, ObservableObject {
         statusItem = item
     }
 
-    /// 语言变了要重建菜单：NSMenu 的标题是构建时定死的字符串，不会自己刷新。
-    private func rebuildStatusMenu() {
-        guard let item = statusItem else { return }
-        NSStatusBar.system.removeStatusItem(item)
-        statusItem = nil
-        installStatusItem()
-        updateStatusItemTitle()
+    /// 语言变了要刷新 AppKit 那一侧。
+    ///
+    /// SwiftUI 视图会因为 SettingsStore 发布而自己重绘，但 AppKit 的这两处不会：
+    /// NSMenu 的标题是构建时定死的字符串，NSWindow.title 是赋值一次的属性。
+    /// 漏掉它们的话，切到英文后菜单栏和窗口标题会一直留在中文。
+    func applyLanguage() {
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+            installStatusItem()
+            updateStatusItemTitle()
+        }
+        mainWindow?.title = L(.appName)
     }
 
     /// 应用外观偏好。改 NSApp.appearance 后，Theme 里所有动态色会一起解析成对应外观。
+    ///
+    /// 桌面挂件的 NSPanel 没有自己设 appearance，会继承 NSApp 的；
+    /// 但显式赋一次更稳妥——面板是在 applyAppearance 之后才创建的路径也存在。
     func applyAppearance(_ pref: AppearancePreference) {
         NSApp.appearance = pref.nsAppearance
+        widgetPanel?.appearance = pref.nsAppearance
+        mainWindow?.appearance = pref.nsAppearance
     }
 
     private func updateStatusItemTitle() {
@@ -178,7 +189,7 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func showWidget() {
         if widgetPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 120, y: 240, width: 268, height: 210),
+            let panel = NSPanel(contentRect: NSRect(x: 120, y: 240, width: 288, height: 215),
                                 styleMask: [.borderless, .nonactivatingPanel],
                                 backing: .buffered, defer: false)
             panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
@@ -187,6 +198,9 @@ final class AppCoordinator: NSObject, ObservableObject {
             panel.isOpaque = false
             panel.hasShadow = true
             panel.hidesOnDeactivate = false
+            // 面板是在 start() 的 applyAppearance 之后才创建的，那次赋值对它是空操作。
+            // 不设也会继承 NSApp.appearance，但显式赋一次不依赖继承行为。
+            panel.appearance = settingsStore.settings.appearance.nsAppearance
 
             let view = WidgetView(store: dayStore, settings: settingsStore,
                                   monitor: monitor, breaker: breaker) { [weak self] in
@@ -247,12 +261,13 @@ final class AppCoordinator: NSObject, ObservableObject {
                 onWidgetVisibilityChange: { [weak self] v in self?.setWidgetVisible(v) },
                 onMonitoringChange: { [weak self] on in self?.setMonitoring(on) },
                 onAppearanceChange: { [weak self] p in self?.applyAppearance(p) },
-                onLanguageChange: { [weak self] _ in self?.rebuildStatusMenu() })
+                onLanguageChange: { [weak self] _ in self?.applyLanguage() })
 
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
                              backing: .buffered, defer: false)
             w.title = L(.appName)
+            w.appearance = settingsStore.settings.appearance.nsAppearance
             w.contentView = NSHostingView(rootView: view)
             w.center()
             w.isReleasedWhenClosed = false

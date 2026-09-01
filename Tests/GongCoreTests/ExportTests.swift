@@ -173,3 +173,97 @@ final class ExportSafetyTests: XCTestCase {
         XCTAssertTrue(text.contains("# 20260831 周一"), "2026-08-31 是周一")
     }
 }
+
+// MARK: - 切换界面语言后重新导出（用户明确选择「导出跟界面语言走」）
+
+/// 这是这个选择最容易出错的地方：切语言会让同一天的渲染结果完全不同。
+/// 如果「是否可替换」的判断拿的是**新渲染的哈希**去比对盘上文件，
+/// 那第一次切语言就会把自己上次导出的文件判成「外部修改」，
+/// 从此每天都写冲突文件，用户会收到一堆莫名其妙的 *.gong-conflict.md。
+///
+/// 正确的判断是「盘上内容 vs 我上次写下去的内容」，与新渲染结果无关。
+final class ExportLanguageSwitchTests: XCTestCase {
+
+    private var tmpDir: URL!
+
+    override func setUpWithError() throws {
+        tmpDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("gong-lang-export-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: tmpDir) }
+
+    private func settings(_ lang: LangPreference) -> AppSettings {
+        var s = AppSettings()
+        s.exportDirectoryPath = tmpDir.path
+        s.language = lang
+        return s
+    }
+
+    private func record() -> DayRecord {
+        var r = DayRecord(date: "2026-08-31")
+        r.todos = [Todo(text: "把蜂箱数据管线跑通", kind: .floor)]
+        r.planned = [PlannedBlock(start: 9 * 60, end: 10 * 60, title: "深度工作")]
+        return r
+    }
+
+    private var target: URL { tmpDir.appendingPathComponent("20260831.md") }
+
+    func testSwitchingLanguageUpdatesInPlaceWithoutConflict() async throws {
+        var rec = record()
+
+        // 1) 中文导出
+        let (o1, s1) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.zh))
+        guard case .created = o1 else { return XCTFail("首次应为 .created，实际 \(o1)") }
+        rec.exportState = s1
+        let zh = try String(contentsOf: target, encoding: .utf8)
+        XCTAssertTrue(zh.contains("## 今日 TODO"), zh)
+
+        // 2) 切英文再导出同一天 —— 必须**原地更新**，不能判成冲突
+        let (o2, s2) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.en))
+        guard case .updated(let u) = o2 else {
+            return XCTFail("切语言后应原地更新，实际 \(o2)。若为 .conflict 说明可替换判断用错了哈希")
+        }
+        XCTAssertEqual(u, target)
+        rec.exportState = s2
+        let en = try String(contentsOf: target, encoding: .utf8)
+        XCTAssertTrue(en.contains("## Today's TODO"), en)
+        XCTAssertFalse(en.contains("## 今日 TODO"), "英文导出不该残留中文小节名\n\(en)")
+
+        // 3) 没有产生任何冲突文件
+        let files = try FileManager.default.contentsOfDirectory(atPath: tmpDir.path)
+        XCTAssertEqual(files.filter { $0.contains("conflict") }, [], "不该产生冲突文件：\(files)")
+
+        // 4) 再切回中文，同样原地更新
+        let (o3, _) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.zh))
+        guard case .updated = o3 else { return XCTFail("切回中文应原地更新，实际 \(o3)") }
+        XCTAssertTrue(try String(contentsOf: target, encoding: .utf8).contains("## 今日 TODO"))
+    }
+
+    /// 语言没变、内容也没变 → 仍然应当识别为「无变化」，不重复写盘。
+    func testSameLanguageUnchangedStillSkipsWrite() async throws {
+        var rec = record()
+        let (_, s1) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.en))
+        rec.exportState = s1
+        let (o2, _) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.en))
+        guard case .unchanged = o2 else { return XCTFail("应为 .unchanged，实际 \(o2)") }
+    }
+
+    /// 但外部真的改了文件，切语言也不能变成覆盖的借口。
+    func testExternalEditStillProducesConflictEvenAcrossLanguages() async throws {
+        var rec = record()
+        let (_, s1) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.zh))
+        rec.exportState = s1
+
+        try (try String(contentsOf: target, encoding: .utf8) + "\n手工加的一行\n")
+            .write(to: target, atomically: true, encoding: .utf8)
+
+        let (o2, _) = await Exporter.shared.export(record: rec, usage: nil, settings: settings(.en))
+        guard case .conflict(let c) = o2 else {
+            return XCTFail("外部改动过就必须走冲突，实际 \(o2)")
+        }
+        XCTAssertTrue(c.lastPathComponent.contains("conflict"))
+        XCTAssertTrue(try String(contentsOf: target, encoding: .utf8).contains("手工加的一行"),
+                      "原文件必须一字不动")
+    }
+}
