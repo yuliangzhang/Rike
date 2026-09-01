@@ -93,6 +93,32 @@ final class L10nTests: XCTestCase {
         XCTAssertFalse(md.contains("今日 TODO"), "英文导出里不该残留中文小节名\n\(md)")
     }
 
+    /// 英文导出不该夹全角标点。这是「跟界面语言走」最容易漏的一层：
+    /// 小节名翻了，但拼接用的「：（）｜」还是中文的，读起来中英混排。
+    func testEnglishExportHasNoFullWidthPunctuation() {
+        var s = AppSettings(); s.language = .en
+        s.exportUsageDetail = true
+        var rec = sampleRecord()
+        rec.actual = [ActualBlock(start: Date(timeIntervalSince1970: 1_788_000_000),
+                                  end: Date(timeIntervalSince1970: 1_788_003_600),
+                                  timeZoneIdentifier: "America/New_York",
+                                  title: "cross-zone", source: .manual)]
+        var c = ClarityEntry(); c.stuckOn = "x"
+        rec.summary.clarity = [c]
+        let md = MarkdownRenderer.render(record: rec, usage: nil, settings: s)
+        for ch in ["：", "（", "）", "｜"] {
+            XCTAssertFalse(md.contains(ch), "英文导出里出现了全角「\(ch)」\n\(md)")
+        }
+        XCTAssertTrue(md.contains(": "), "英文该用半角冒号加空格\n\(md)")
+    }
+
+    /// 中文导出仍然用全角标点——修英文不能把中文改坏。
+    func testChineseExportKeepsFullWidthPunctuation() {
+        var s = AppSettings(); s.language = .zh
+        let md = MarkdownRenderer.render(record: sampleRecord(), usage: nil, settings: s)
+        XCTAssertTrue(md.contains("："), md)
+    }
+
     /// 默认必须是中文：这个 app 的既有记录全是中文，而机器的系统语言是 en-AU。
     /// 默认跟随系统会让升级后界面突然变英文。
     func testDefaultLanguageIsChinese() {

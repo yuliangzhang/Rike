@@ -217,7 +217,7 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
         let base = "\(hm(start)) \(S.rangeSep.text(lang)) \(hm(end))"
         return timeZoneIdentifier == recordTimeZoneIdentifier
             ? base
-            : "\(base)（\(timeZoneIdentifier)）"
+            : "\(base)\(S.punctParenOpen.text(lang))\(timeZoneIdentifier)\(S.punctParenClose.text(lang))"
     }
 
     /// 与记录时区不同时返回时区标识，供 UI 在可编辑的时间格旁挂一个后缀。

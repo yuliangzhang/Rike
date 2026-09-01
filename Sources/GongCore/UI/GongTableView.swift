@@ -212,7 +212,7 @@ struct GongTableView: View {
                 .font(Theme.ui(Theme.Size.meta, .semibold)).foregroundStyle(Theme.mark)
             Explain(L(.outOfRangeBody, store.record.key.timeZoneIdentifier))
             ForEach(blocks) { b in
-                Text("· \(b.label)（\(b.timeZoneIdentifier)）\(b.title)")
+                Text("· \(b.label)\(L(.punctParenOpen))\(b.timeZoneIdentifier)\(L(.punctParenClose)) \(b.title)")
                     .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.muted)
             }
         }

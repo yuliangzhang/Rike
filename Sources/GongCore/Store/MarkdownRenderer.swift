@@ -23,6 +23,7 @@ enum MarkdownRenderer {
             String(format: k.text(lang), arguments: a)
         }
         let notRecorded = t(.mdNotRecorded)
+        let colon = t(.punctColon)
 
         var out: [String] = [marker]
         let compact = GongTime.compactKey(record.date)
@@ -54,7 +55,7 @@ enum MarkdownRenderer {
             out.append("- \(notRecorded)")
         } else {
             for b in record.planned.sorted(by: { $0.startMinute < $1.startMinute }) {
-                out.append("- \(b.rangeLabel(lang))：\(b.title)")
+                out.append("- \(b.rangeLabel(lang))\(colon)\(b.title)")
             }
         }
         out.append("")
@@ -68,7 +69,7 @@ enum MarkdownRenderer {
                 // 按块自身时区渲染，跨时区时带上时区标识 —— 否则导出的墙钟时间是错的
                 let label = b.rangeLabel(recordTimeZoneIdentifier: record.key.timeZoneIdentifier,
                                          lang: lang)
-                out.append("- \(label)：\(b.title)")
+                out.append("- \(label)\(colon)\(b.title)")
             }
         }
         out.append("")
@@ -87,10 +88,10 @@ enum MarkdownRenderer {
                 s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? empty : s
             }
             for c in record.summary.clarity {
-                out.append("- \(t(.mdStuckOn))：\(blank(c.stuckOn))")
-                out.append("  - \(t(.mdEscapingFrom))：\(blank(c.escapingFrom))")
-                out.append("  - \(t(.mdWorstCase))：\(blank(c.worstCase))")
-                out.append("  - → \(t(.mdFirstStep))：\(blank(c.firstStep))")
+                out.append("- \(t(.mdStuckOn))\(colon)\(blank(c.stuckOn))")
+                out.append("  - \(t(.mdEscapingFrom))\(colon)\(blank(c.escapingFrom))")
+                out.append("  - \(t(.mdWorstCase))\(colon)\(blank(c.worstCase))")
+                out.append("  - → \(t(.mdFirstStep))\(colon)\(blank(c.firstStep))")
             }
         }
         if !record.summary.freeText.isEmpty {
@@ -102,8 +103,8 @@ enum MarkdownRenderer {
 
         // MARK: 状态（中性措辞，无 ✓ 无评价）
         out.append("### \(t(.mdStatus))")
-        out.append("- \(t(.mdFloorLine))：\(record.floorStatus.label(lang))")
-        out.append("- \(t(.mdMitLine))：\(record.mitStatus.label(lang))")
+        out.append("- \(t(.mdFloorLine))\(colon)\(record.floorStatus.label(lang))")
+        out.append("- \(t(.mdMitLine))\(colon)\(record.mitStatus.label(lang))")
         out.append("")
 
         // MARK: 注意力（默认不导出明细）
@@ -122,7 +123,7 @@ enum MarkdownRenderer {
             out.append("## \(t(.mdUsageTop5))")
             let top = u.totals().prefix(5)
                 .map { "\($0.name) \(GongTime.formatDuration($0.seconds))" }
-                .joined(separator: " ｜ ")
+                .joined(separator: t(.punctPipe))
             out.append("- \(top)")
             out.append("")
         }

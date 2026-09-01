@@ -70,6 +70,7 @@ enum S: CaseIterable {
     case triggerN1, triggerN2, triggerN3, triggerV1, triggerV2
     case catFocus, catNeutral, catOther
     case untitled, emptyBrackets
+    case punctColon, punctParenOpen, punctParenClose, punctPipe
 
     // 挂件
     case widgetEmpty, widgetCurrent, widgetMore, widgetTapHelp
@@ -213,6 +214,12 @@ extension S {
         case .catOther:   return ("其他", "Other")
         case .untitled:      return ("（无标题）", "(untitled)")
         case .emptyBrackets: return ("（空）", "(empty)")
+        // 标点也要跟着语言走。英文正文里夹全角「：（）｜」会很扎眼，
+        // 而且导出的 markdown 是给未来的自己读的，不该中英标点混排。
+        case .punctColon:      return ("：", ": ")
+        case .punctParenOpen:  return ("（", " (")
+        case .punctParenClose: return ("）", ")")
+        case .punctPipe:       return (" ｜ ", " | ")
 
         // MARK: 挂件
         case .widgetEmpty:   return ("今天还没有记录", "Nothing recorded yet today")
