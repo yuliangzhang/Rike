@@ -229,11 +229,13 @@ struct GongTableView: View {
 
             ForEach(store.record.planned) { blk in
                 HStack(spacing: 8) {
-                    timeField(text: GongTime.formatMinutes(blk.startMinute)) { m in
+                    timeField(text: GongTime.formatMinutes(blk.startMinute),
+                              id: ctx("plannedStart", blk.id.uuidString)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: m, end: $0.endMinute) }
                     }
                     Text("至").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    timeField(text: GongTime.formatMinutes(blk.endMinute)) { m in
+                    timeField(text: GongTime.formatMinutes(blk.endMinute),
+                              id: ctx("plannedEnd", blk.id.uuidString)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: $0.startMinute, end: m) }
                     }
                     BufferedTextField(contextID: ctx("planned", blk.id.uuidString),
@@ -265,10 +267,24 @@ struct GongTableView: View {
 
             ForEach(store.record.actual) { blk in
                 HStack(spacing: 8) {
-                    Text(actualRange(blk))
-                        .font(Theme.monoSized(11)).foregroundStyle(.secondary)
-                        .frame(width: 150, alignment: .leading)
-                        .lineLimit(1).truncationMode(.middle)
+                    // 时间可改：我们并不是一直坐在电脑前，监控填进来的区间和
+                    // 「＋新增」给的默认一小时都只是起点，必须让人改成事实。
+                    timeField(text: GongTime.formatMinutes(blk.startWallClockMinutes),
+                              id: ctx("actualStart", blk.id.uuidString)) { m in
+                        updateActual(blk.id) { $0.setStartWallClock(m) }
+                    }
+                    Text("至").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    timeField(text: GongTime.formatMinutes(blk.endWallClockMinutes),
+                              id: ctx("actualEnd", blk.id.uuidString)) { m in
+                        updateActual(blk.id) { $0.setEndWallClock(m) }
+                    }
+                    if let tz = blk.foreignTimeZoneLabel(
+                        recordTimeZoneIdentifier: store.record.key.timeZoneIdentifier) {
+                        Text(tz)
+                            .font(Theme.monoSized(9)).foregroundStyle(Theme.warn)
+                            .lineLimit(1).truncationMode(.middle)
+                            .help("这条记录发生在 \(tz)，时间按该时区显示与编辑")
+                    }
                     BufferedTextField(contextID: ctx("actual", blk.id.uuidString),
                                       placeholder: "内容", value: blk.title) { v in
                         store.mutate { rec in
@@ -305,8 +321,11 @@ struct GongTableView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
 
-    private func timeField(text: String, onCommit: @escaping (Int) -> Void) -> some View {
-        TimeEntryField(initial: text, onCommit: onCommit)
+    private func timeField(text: String, id: String,
+                           onCommit: @escaping (Int) -> Void) -> some View {
+        // .id() 让换日时底层 NSTextField 连同未提交内容一起重建，
+        // 杜绝 r3 那类「上一天的输入落进新一天」的缺陷。
+        TimeEntryField(initial: text, onCommit: onCommit).id(id)
     }
 
     private func deleteButton(_ action: @escaping () -> Void) -> some View {
@@ -320,9 +339,10 @@ struct GongTableView: View {
         }
     }
 
-    private func actualRange(_ blk: ActualBlock) -> String {
-        // 按块自身时区渲染；与记录时区不同时会带上时区标识
-        blk.rangeLabel(recordTimeZoneIdentifier: store.record.key.timeZoneIdentifier)
+    private func updateActual(_ id: UUID, _ change: (inout ActualBlock) -> Void) {
+        store.mutate { rec in
+            if let i = rec.actual.firstIndex(where: { $0.id == id }) { change(&rec.actual[i]) }
+        }
     }
 
     private func addActualManually() {

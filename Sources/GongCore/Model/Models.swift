@@ -209,6 +209,74 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
             ? base
             : "\(base)（\(timeZoneIdentifier)）"
     }
+
+    /// 与记录时区不同时返回时区标识，供 UI 在可编辑的时间格旁挂一个后缀。
+    func foreignTimeZoneLabel(recordTimeZoneIdentifier: String) -> String? {
+        timeZoneIdentifier == recordTimeZoneIdentifier ? nil : timeZoneIdentifier
+    }
+
+    // MARK: 墙钟编辑
+    //
+    // 实际块在模型里是一段绝对时间（DateInterval），但人是按墙钟来改的：
+    // 「我其实是 14:00 到 15:30 干的这件事」。所以编辑入口收墙钟分钟数，
+    // 一律**按本块自己的时区**解释——用记录的时区解释会把在纽约发生的事
+    // 写成珀斯的时刻，和 rangeLabel 的结论自相矛盾。
+
+    private var ownCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = timeZone
+        return c
+    }
+
+    private func wallClockMinutes(_ d: Date) -> Int {
+        let c = ownCalendar
+        return c.component(.hour, from: d) * 60 + c.component(.minute, from: d)
+    }
+
+    /// 本块在自己时区里的墙钟分钟数，供编辑框显示。
+    var startWallClockMinutes: Int { wallClockMinutes(start) }
+    var endWallClockMinutes: Int { wallClockMinutes(end) }
+
+    /// 把墙钟分钟数解析成本块时区里的一个瞬间，锚定在 `anchor` 所在的那个日历日。
+    /// 走 DateComponents 而不是 startOfDay + 秒偏移：DST 当天不是 1440 分钟，
+    /// 秒偏移会算错；交给 Calendar 解释墙钟才是对的。
+    /// 春令时的不存在时刻由 Calendar 前移到间隔之后，仍返回一个有效瞬间。
+    private func instant(wallClockMinutes m: Int, anchoredOn anchor: Date) -> Date? {
+        let c = ownCalendar
+        var comps = c.dateComponents([.year, .month, .day], from: anchor)
+        comps.hour = m / 60          // m == 1440 时 hour = 24，Calendar 自行滚到次日 00:00
+        comps.minute = m % 60
+        comps.second = 0
+        return c.date(from: comps)
+    }
+
+    /// 改开始时刻。结束时刻原则上不动（把 09:12 改成 09:30 就该只是缩短这一块）；
+    /// 只有当新的开始越过了原结束时才整块平移，保住原时长。
+    /// 这里**不能**套用「结束顺延到次日」的规则——那会把 10:00–11:00 改成
+    /// 14:00 时凭空造出一个二十一小时的块，显然不是人改开始时间时的意思。
+    mutating func setStartWallClock(_ minutes: Int) {
+        guard let s = instant(wallClockMinutes: minutes, anchoredOn: start) else { return }
+        let duration = durationSeconds
+        start = s
+        if end <= start { end = start.addingTimeInterval(max(60, duration)) }
+    }
+
+    /// 改结束时刻。锚定在**开始所在的那一天**再向后归一化，
+    /// 于是「23:00 至 01:00」（跨夜）和「23:00 至 23:30」都能按人的直觉落到正确的一天。
+    mutating func setEndWallClock(_ minutes: Int) {
+        guard let e = instant(wallClockMinutes: minutes, anchoredOn: start) else { return }
+        end = e
+        normalizeEndForward()
+    }
+
+    private mutating func normalizeEndForward() {
+        guard end <= start else { return }
+        if let next = ownCalendar.date(byAdding: .day, value: 1, to: end), next > start {
+            end = next
+        } else {
+            end = start.addingTimeInterval(60)
+        }
+    }
 }
 
 /// 模糊拆解器的一条。第 04 栏 firstStep 为空 = 未完成。
