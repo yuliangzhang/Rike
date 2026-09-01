@@ -553,8 +553,52 @@ struct TimeEntryField: View {
             .focused($focused)
             .onAppear { text = initial }
             .onChange(of: initial) { _, new in if !focused { text = new } }
+            .onChange(of: text) { _, new in
+                // 边打边过滤：挡住字母、多余的冒号和第 6 个字符。
+                // 否则要等失焦才发现解析失败、整段被还原，白打一遍。
+                let clean = Self.sanitize(new)
+                if clean != new { text = clean }
+            }
             .onSubmit(commit)
-            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+            .onChange(of: focused) { _, isFocused in
+                if isFocused { selectAll() } else { commit() }
+            }
+    }
+
+    /// 获得**焦点时全选**。
+    ///
+    /// 这是这个框最影响效率的一点：框里是 `21:16`，点进去光标停在点中的位置，
+    /// 直接敲 `1400` 会插成一串垃圾，必须先用鼠标把原值圈掉。全选之后
+    /// 「点进去 → 敲 1400 → 回车」就是 14:00，手不用离开键盘。
+    ///
+    /// 只在**刚获得焦点**时全选；已经聚焦后再点一下仍然是正常的定位光标，
+    /// 想只改分钟还是可以的。
+    ///
+    /// SwiftUI 的 TextField 在 macOS 上由 NSTextField 支持，获得焦点后窗口的
+    /// firstResponder 是它的 field editor（一个 NSTextView）。要等 AppKit 把
+    /// field editor 装好才能全选，所以推迟一个 runloop。
+    /// 拿不到就什么都不做——退化成原来的行为，不会更坏。
+    private func selectAll() {
+        DispatchQueue.main.async {
+            (NSApp.keyWindow?.firstResponder as? NSTextView)?.selectAll(nil)
+        }
+    }
+
+    /// 只留数字和一个冒号，最长 5 个字符（`09:30`）。
+    /// 全角冒号归一成半角——中文输入法下敲出来的是全角。
+    static func sanitize(_ raw: String) -> String {
+        var out = ""
+        var sawColon = false
+        for ch in raw {
+            guard out.count < 5 else { break }
+            if ch.isNumber {
+                out.append(ch)
+            } else if ch == ":" || ch == "：", !sawColon {
+                out.append(":")
+                sawColon = true
+            }
+        }
+        return out
     }
 
     @ViewBuilder
