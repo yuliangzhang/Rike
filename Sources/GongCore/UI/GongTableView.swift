@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// 「工」字表 —— 本应用的核心。
 /// 上横 TODO（通栏）／ 中竖 计划|实际（左右内缩，形成工字剪影）／ 下横 总结（通栏）
@@ -59,7 +60,8 @@ struct GongTableView: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
 
-            BufferedTextField(value: todo.text, font: .system(size: 13)) { v in
+            BufferedTextField(contextID: ctx("todo", todo.id.uuidString),
+                              value: todo.text, font: .system(size: 13)) { v in
                 store.mutate { rec in
                     if let i = rec.todos.firstIndex(where: { $0.id == todo.id }) {
                         rec.todos[i].text = v
@@ -137,7 +139,15 @@ struct GongTableView: View {
         }
     }
 
+    /// 切日期前先收掉焦点：让正在编辑的输入框走失焦提交路径，
+    /// 把内容落到**当前这一天**，而不是被 contextID 重置丢掉。
+    private func resignFocusBeforeDayChange() {
+        focusedField = nil
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
     private func shiftDay(_ delta: Int) {
+        resignFocusBeforeDayChange()
         let key = store.record.key
         guard let d = GongTime.date(fromDayKey: key.date, timeZone: key.timeZone),
               let next = key.calendar.date(byAdding: .day, value: delta, to: d) else { return }
@@ -145,14 +155,21 @@ struct GongTableView: View {
     }
 
     private func goToday() {
+        resignFocusBeforeDayChange()
         Task { await store.load(dayKey: DayKey(Date())) }
     }
 
     // MARK: - 工 · 中竖：Ribbon + 计划 | 实际
 
+    private var projection: DayProjection {
+        DayTimelineProjection.project(record: store.record, now: Date())
+    }
+
     private var stem: some View {
         VStack(spacing: 10) {
-            RibbonView(projection: DayTimelineProjection.project(record: store.record, now: Date()))
+            let proj = projection
+            RibbonView(projection: proj)
+            if !proj.outOfRange.isEmpty { outOfRangeNote(proj.outOfRange) }
             HStack(alignment: .top, spacing: 0) {
                 plannedColumn
                 Divider().overlay(Theme.hairline)
@@ -163,6 +180,26 @@ struct GongTableView: View {
         }
         .padding(.horizontal, 52)          // 内缩 → 工字剪影
         .padding(.vertical, 16)
+    }
+
+    /// 有实际记录落在当日投影范围之外时，明确告知——绝不静默隐藏数据。
+    private func outOfRangeNote(_ blocks: [OutOfRangeBlock]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(blocks.count) 条实际记录落在该日时间轴之外")
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.warn)
+            Text("这一天按 \(store.record.key.timeZoneIdentifier) 的日界投影。以下记录发生在该范围外，画不到轴上，但仍在记录里，也会正常导出。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(blocks) { b in
+                Text("· \(b.label)（\(b.timeZoneIdentifier)）\(b.title)")
+                    .font(Theme.monoSized(10)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.warn.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.warn.opacity(0.4)))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     private var plannedColumn: some View {
@@ -180,7 +217,8 @@ struct GongTableView: View {
                     timeField(text: GongTime.formatMinutes(blk.endMinute)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: $0.startMinute, end: m) }
                     }
-                    BufferedTextField(placeholder: "内容", value: blk.title) { v in
+                    BufferedTextField(contextID: ctx("planned", blk.id.uuidString),
+                                      placeholder: "内容", value: blk.title) { v in
                         updatePlanned(blk.id) { $0.title = v }
                     }
                     deleteButton { store.mutate { $0.planned.removeAll { $0.id == blk.id } } }
@@ -211,7 +249,8 @@ struct GongTableView: View {
                     Text(actualRange(blk))
                         .font(Theme.monoSized(11)).foregroundStyle(.secondary)
                         .frame(width: 96, alignment: .leading)
-                    BufferedTextField(placeholder: "内容", value: blk.title) { v in
+                    BufferedTextField(contextID: ctx("actual", blk.id.uuidString),
+                                      placeholder: "内容", value: blk.title) { v in
                         store.mutate { rec in
                             if let i = rec.actual.firstIndex(where: { $0.id == blk.id }) {
                                 rec.actual[i].title = v
@@ -348,8 +387,15 @@ struct GongTableView: View {
                                value: String, onChange: @escaping (String) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-            BufferedTextEditor(value: value, hint: hint, onChange: onChange)
+            BufferedTextEditor(contextID: ctx("summary", label), value: value,
+                               hint: hint, onChange: onChange)
         }
+    }
+
+    /// 缓冲上下文标识：记录日期 + 字段身份。
+    /// 日期一变，所有缓冲立即重置，杜绝把上一天的文字提交进新一天。
+    private func ctx(_ kind: String, _ id: String) -> String {
+        "\(store.record.key.date)|\(kind)|\(id)"
     }
 }
 
@@ -358,6 +404,7 @@ struct GongTableView: View {
 private struct ClarityRow: View {
     let entry: ClarityEntry
     @ObservedObject var store: DayStore
+    private var dayKey: String { store.record.key.date }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -389,7 +436,8 @@ private struct ClarityRow: View {
             Text(label)
                 .font(Theme.monoSized(9)).foregroundStyle(.tertiary)
                 .frame(width: 168, alignment: .leading)
-            BufferedTextField(value: value, onChange: set)
+            BufferedTextField(contextID: "\(dayKey)|clarity|\(entry.id.uuidString)|\(label)",
+                              value: value, onChange: set)
         }
     }
 

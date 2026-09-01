@@ -184,6 +184,9 @@ final class DayStore: ObservableObject {
             notice = Notice(level: .info, text: "已导出：\(u.lastPathComponent)")
         case .updated(let u):
             notice = Notice(level: .info, text: "已更新：\(u.lastPathComponent)")
+        case .updatedUnsynced(let u, let detail):
+            notice = Notice(level: .warning,
+                            text: "已写入 \(u.lastPathComponent)，但磁盘未确认持久化（\(detail)）。内容已就位，断电时可能丢失这一次写入。")
         case .unchanged(let u):
             if !silentWhenUnchanged {
                 notice = Notice(level: .info, text: "内容无变化，未写入：\(u.lastPathComponent)")

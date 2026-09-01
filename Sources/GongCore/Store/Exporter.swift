@@ -5,11 +5,15 @@ enum ExportOutcome: Sendable, Equatable {
     case updated(URL)          // 目标是我们自己写的且未被改动，安全替换
     case unchanged(URL)        // 内容无变化，未写盘
     case conflict(URL)         // 目标被外部修改/非本应用生成 → 另存冲突文件，原文件未动
+    /// 内容已写入目标，但目录项持久化未获确认（外置盘/NFS 常见）。
+    /// **仍算写入成功**，exportState 必须更新，否则会陷入永久冲突。
+    case updatedUnsynced(URL, String)
     case failed(String)
 
     var url: URL? {
         switch self {
         case .created(let u), .updated(let u), .unchanged(let u), .conflict(let u): return u
+        case .updatedUnsynced(let u, _): return u
         case .failed: return nil
         }
     }
@@ -70,6 +74,7 @@ actor Exporter {
 
         // 2) 目标已存在 → 在目录锁内校验 + 写入，并在 rename 前再复核一次
         let expected = record.exportState
+        var unsyncedWarning: String?
         do {
             let outcome: ExportOutcome? = try await store.withDirectoryLock(dir) { () -> ExportOutcome? in
                 guard let (current, currentHash) = try FileStore.readSyncWithHash(target) else {
@@ -92,9 +97,17 @@ actor Exporter {
                 guard let (_, recheck) = try FileStore.readSyncWithHash(target),
                       recheck == currentHash else { return .conflict(target) }
 
-                try FileStore.commitTempSync(tmp, to: target)
+                let commit = try FileStore.commitTempSync(tmp, to: target)
                 committed = true
-                return .updated(target)
+                switch commit {
+                case .committed:
+                    return .updated(target)
+                case .committedButUnsynced(let detail):
+                    // 文件确实已被替换，必须照常更新 exportState，
+                    // 否则下次导出会误判为「被外部修改」而永远走冲突。
+                    unsyncedWarning = detail
+                    return .updated(target)
+                }
             }
 
             switch outcome {
@@ -111,8 +124,12 @@ actor Exporter {
                 return (.unchanged(u),
                         ExportState(path: u.path, contentHash: newHash, exportedAt: Date()))
             case .updated(let u):
-                return (.updated(u),
-                        ExportState(path: u.path, contentHash: newHash, exportedAt: Date()))
+                let state = ExportState(path: u.path, contentHash: newHash, exportedAt: Date())
+                if let w = unsyncedWarning {
+                    // 内容已写入，但磁盘未确认持久化 —— 如实告知，不静默。
+                    return (.updatedUnsynced(u, w), state)
+                }
+                return (.updated(u), state)
             default:
                 return (.failed("导出状态异常"), nil)
             }

@@ -95,12 +95,21 @@ actor FileStore {
         try syncDirectory(dir)
     }
 
-    /// 目录项同步。失败会抛出 —— 吞掉它等于向调用方谎称「已持久化」。
+    /// 目录项同步。fsync **和** close 的失败都会抛出 ——
+    /// 外置盘/NFS 会把延迟写错误报在 close 上，吞掉它等于向调用方谎称「已持久化」。
     private func syncDirectory(_ dir: URL) throws {
+        try FileStore.syncDirectorySync(dir)
+    }
+
+    nonisolated static func syncDirectorySync(_ dir: URL) throws {
         let fd = open(dir.path, O_RDONLY)
         guard fd >= 0 else { throw FileStoreError.openFailed(dir.path, errno: errno) }
-        defer { close(fd) }
-        if fsync(fd) != 0 { throw FileStoreError.syncFailed(dir.path, errno: errno) }
+        let syncOK = fsync(fd) == 0
+        let syncErrno = errno
+        let closeOK = close(fd) == 0
+        let closeErrno = errno
+        if !syncOK { throw FileStoreError.syncFailed(dir.path, errno: syncErrno) }
+        if !closeOK { throw FileStoreError.syncFailed(dir.path, errno: closeErrno) }
     }
 
     // MARK: - JSON
@@ -307,19 +316,33 @@ actor FileStore {
         return tmp
     }
 
+    /// `commitTempSync` 的结果。
+    ///
+    /// **必须区分这两种情况**：若 rename 已经成功、只是目录 fsync 没确认，
+    /// 目标文件其实**已经是新内容**了。此时如果整体当成失败、不更新 exportState，
+    /// 下一次导出会把这个新目标当成「被外部修改」，从此永远走冲突分支——
+    /// 一次瞬时的磁盘异常会变成永久性的功能损坏。
+    enum CommitOutcome: Sendable {
+        /// rename 成功且目录项已同步。
+        case committed
+        /// rename **已发生**（目标已是新内容），但持久化确认失败。
+        case committedButUnsynced(String)
+    }
+
     /// 两阶段原子写 · 阶段二：rename + 目录同步。窗口只有这一步。
-    nonisolated static func commitTempSync(_ tmp: URL, to target: URL) throws {
+    nonisolated static func commitTempSync(_ tmp: URL, to target: URL) throws -> CommitOutcome {
         if rename(tmp.path, target.path) != 0 {
             let e = errno
             try? FileManager.default.removeItem(at: tmp)
-            throw FileStoreError.renameFailed(target.path, errno: e)
+            throw FileStoreError.renameFailed(target.path, errno: e)   // rename 未发生
         }
-        let dir = target.deletingLastPathComponent()
-        let fd = open(dir.path, O_RDONLY)
-        guard fd >= 0 else { throw FileStoreError.openFailed(dir.path, errno: errno) }
-        let ok = fsync(fd) == 0
-        let closeOK = close(fd) == 0
-        if !ok || !closeOK { throw FileStoreError.syncFailed(dir.path, errno: errno) }
+        // 到这里目标文件已经是新内容了，之后的失败都不能当成「没写成」
+        do {
+            try syncDirectorySync(target.deletingLastPathComponent())
+            return .committed
+        } catch {
+            return .committedButUnsynced(error.localizedDescription)
+        }
     }
 
     nonisolated static func discardTempSync(_ tmp: URL) {

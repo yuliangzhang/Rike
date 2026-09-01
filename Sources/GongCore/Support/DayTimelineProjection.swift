@@ -26,6 +26,20 @@ struct TimelineTick: Hashable, Sendable {
     var label: String      // 墙钟标签，秋令时会出现两个 "01"
 }
 
+/// 落在当日投影范围之外的实际记录。
+///
+/// 这类记录**不能被静默丢弃**。典型场景：在珀斯建立了 09-01 的记录，
+/// 飞到纽约，当地仍是 09-01 晚上继续记录——但那个时刻已经越过了珀斯的 09-01。
+/// Ribbon 画不出来，可它确实存在（Markdown 导出里也有），
+/// 所以必须在 UI 上明确告诉用户「有 N 条落在范围外」，而不是让它们消失。
+struct OutOfRangeBlock: Identifiable, Hashable, Sendable {
+    var id: UUID
+    var title: String
+    /// 按该块**自己发生地**的时区渲染的墙钟标签。
+    var label: String
+    var timeZoneIdentifier: String
+}
+
 struct DayProjection: Hashable, Sendable {
     /// 轴总长 = 当日真实时长。春令时 1380，秋令时 1500，平日 1440。
     var axisLength: Double
@@ -34,6 +48,8 @@ struct DayProjection: Hashable, Sendable {
     var actual: [TimelineSegment]
     /// 「现在」的位置；不在当日则为 nil。
     var nowOffset: Double?
+    /// 有记录但画不到轴上的实际块。为空是常态。
+    var outOfRange: [OutOfRangeBlock] = []
 }
 
 /// 把 DayRecord 投影成可绘制的线段。**纯函数，可测。**
@@ -98,10 +114,21 @@ enum DayTimelineProjection {
         }
 
         // MARK: 实际块：instant → elapsed，按当日边界裁剪
+        var outOfRange: [OutOfRangeBlock] = []
         let actualSegs: [TimelineSegment] = record.actual.compactMap { blk in
             let rawStart = blk.start
             let rawEnd = max(blk.start, blk.end)
-            guard rawEnd > dayStart, rawStart < dayEnd else { return nil }   // 完全在当日之外
+            guard rawEnd > dayStart, rawStart < dayEnd else {
+                // 完全在当日投影之外 —— 记下来，不静默丢弃
+                var ownCal = Calendar(identifier: .gregorian)
+                ownCal.timeZone = blk.timeZone
+                outOfRange.append(OutOfRangeBlock(
+                    id: blk.id,
+                    title: blk.title.isEmpty ? "（无标题）" : blk.title,
+                    label: wallClockLabel(blk.start, blk.end, calendar: ownCal),
+                    timeZoneIdentifier: blk.timeZoneIdentifier))
+                return nil
+            }
 
             let cs = rawStart < dayStart
             let ce = rawEnd > dayEnd
@@ -130,7 +157,8 @@ enum DayTimelineProjection {
                              ticks: ticks,
                              planned: plannedSegs,
                              actual: actualSegs,
-                             nowOffset: nowOffset)
+                             nowOffset: nowOffset,
+                             outOfRange: outOfRange)
     }
 
     /// 墙钟分钟 → elapsed 偏移。返回 (offset, 该墙钟时间是否真实存在)。

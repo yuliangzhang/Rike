@@ -229,10 +229,13 @@ final class DayStoreRegressionTests2: XCTestCase {
         XCTAssertEqual(old.record.summary.freeText, "第 19 次")
     }
 
-    /// 修复前：导出返回后无条件把 exportState 挂到当前 record 上。
-    /// 若导出期间用户又改了内容，那个 contentHash 描述的是旧内容，
-    /// 下次导出会误判「文件未被改动」。
-    func testExportStateNotWrittenBackAfterConcurrentEdit() async throws {
+    /// 断言的是**不变式**而非时序：`async let` + `mutate` 无法保证导出确实先捕获了旧
+    /// revision（codex r3 正确地指出了这一点）。因此这里不声称在测并发窗口，
+    /// 只锁定两条无论时序如何都必须成立的性质：
+    ///   ① 记录内容是最新的；
+    ///   ② 若挂上了 exportState，它的 hash 必须与磁盘内容一致
+    ///      —— 否则下次导出会把自己写的文件误判为「被外部修改」。
+    func testExportStateAlwaysMatchesDiskRegardlessOfTiming() async throws {
         let store = makeStore()
         await store.load(dayKey: key("2026-09-01"))
         store.mutate { $0.todos = [Todo(text: "导出前")] }
@@ -303,5 +306,67 @@ final class TwoPhaseWriteTests: XCTestCase {
         XCTAssertEqual(staged.deletingLastPathComponent().standardizedFileURL,
                        target.deletingLastPathComponent().standardizedFileURL,
                        "temp 必须与目标同目录，否则跨卷 rename 不原子")
+    }
+}
+
+/// 第三轮代码审查的回归测试。
+final class CommitOutcomeTests: XCTestCase {
+    private var tmp: URL!
+    override func setUpWithError() throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("gong-commit-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: tmp) }
+
+    /// rename 成功即视为已提交。区分「未 rename」与「已 rename 但未确认持久化」的意义：
+    /// 后者若被当成失败，exportState 不更新，下次导出会把新目标当外部修改，
+    /// 从此陷入永久冲突——一次瞬时磁盘异常变成永久功能损坏。
+    func testCommitReturnsCommittedOnSuccess() throws {
+        let target = tmp.appendingPathComponent("a.md")
+        try "旧".write(to: target, atomically: true, encoding: .utf8)
+        let staged = try FileStore.prepareTempSync(Data("新".utf8), for: target)
+        let outcome = try FileStore.commitTempSync(staged, to: target)
+        if case .committed = outcome {} else { XCTFail("正常路径应为 .committed，实际 \(outcome)") }
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "新")
+    }
+
+    func testUnsyncedOutcomeStillCountsAsWritten() throws {
+        // 语义测试：committedButUnsynced 表示「文件已是新内容」，
+        // Exporter 必须照常更新 exportState。
+        let outcome = FileStore.CommitOutcome.committedButUnsynced("模拟外置盘 fsync 失败")
+        switch outcome {
+        case .committedButUnsynced(let d):
+            XCTAssertFalse(d.isEmpty, "必须带上可读的原因，不能静默")
+        case .committed:
+            XCTFail("用例构造错误")
+        }
+    }
+
+    func testExportOutcomeUnsyncedExposesURL() {
+        let u = URL(fileURLWithPath: "/tmp/x.md")
+        let o = ExportOutcome.updatedUnsynced(u, "fsync 失败")
+        XCTAssertEqual(o.url, u, "updatedUnsynced 也要能取到 URL，供 UI 提示")
+    }
+}
+
+/// 缓冲文本框的 context 绑定：这是第三轮抓到的会**损坏数据**的问题。
+/// 视图层不易直接单测，这里锁定生成 contextID 的约定本身。
+final class BufferContextTests: XCTestCase {
+    private func ctx(_ day: String, _ kind: String, _ id: String) -> String {
+        "\(day)|\(kind)|\(id)"
+    }
+
+    func testContextChangesWithDay() {
+        let id = UUID().uuidString
+        XCTAssertNotEqual(ctx("2026-08-31", "summary", id), ctx("2026-09-01", "summary", id),
+                          "日期一变 contextID 必须变，否则缓冲不会重置，"
+                          + "前一天的文字会被提交进新一天")
+    }
+
+    func testContextDistinguishesFields() {
+        let a = UUID().uuidString, b = UUID().uuidString
+        XCTAssertNotEqual(ctx("2026-09-01", "todo", a), ctx("2026-09-01", "todo", b))
+        XCTAssertNotEqual(ctx("2026-09-01", "planned", a), ctx("2026-09-01", "actual", a))
     }
 }

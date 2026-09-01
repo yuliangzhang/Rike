@@ -137,11 +137,40 @@ final class ProjectionTests: XCTestCase {
         XCTAssertEqual(seg.endOffset, 20, accuracy: 0.5)
     }
 
-    func testBlockEntirelyOutsideDayIsDropped() {
+    /// 越界的实际记录不画到轴上，但**必须被报告**，不能静默消失。
+    func testBlockEntirelyOutsideDayIsReportedNotSwallowed() {
         var rec = DayRecord(key: DayKey(date: "2026-09-05", timeZoneIdentifier: "Australia/Perth"))
         rec.actual = [ActualBlock(start: utc(2026, 8, 1, 0, 0),
-                                  end:   utc(2026, 8, 1, 1, 0), title: "别的日子")]
-        XCTAssertTrue(DayTimelineProjection.project(record: rec).actual.isEmpty)
+                                  end:   utc(2026, 8, 1, 1, 0),
+                                  timeZoneIdentifier: "America/New_York", title: "别的日子")]
+        let p = DayTimelineProjection.project(record: rec)
+        XCTAssertTrue(p.actual.isEmpty, "画不到轴上")
+        XCTAssertEqual(p.outOfRange.count, 1, "但必须出现在 outOfRange 里")
+        XCTAssertEqual(p.outOfRange.first?.title, "别的日子")
+        XCTAssertEqual(p.outOfRange.first?.timeZoneIdentifier, "America/New_York",
+                       "标签应按该块自己发生地的时区渲染")
+    }
+
+    /// 跨时区同日：在珀斯建的 09-01，飞到纽约当地仍是 09-01 晚上继续记录。
+    /// 那个时刻已越过珀斯的 09-01，必须被报告而不是消失。
+    func testCrossTimeZoneSameDateEveningIsReported() {
+        var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
+        // 纽约 2026-09-01 20:00 EDT = 2026-09-02 00:00 UTC（珀斯已是 09-02 08:00）
+        let nyEvening = utc(2026, 9, 2, 0, 0)
+        rec.actual = [ActualBlock(start: nyEvening, end: nyEvening.addingTimeInterval(3600),
+                                  timeZoneIdentifier: "America/New_York", title: "在纽约记的")]
+        let p = DayTimelineProjection.project(record: rec)
+        XCTAssertTrue(p.actual.isEmpty)
+        XCTAssertEqual(p.outOfRange.count, 1, "跨时区越界的记录必须被明确告知，不能静默隐藏")
+    }
+
+    func testNormalDayHasNoOutOfRange() {
+        var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
+        let t = utc(2026, 9, 1, 2, 0)     // 珀斯 10:00
+        rec.actual = [ActualBlock(start: t, end: t.addingTimeInterval(3600), title: "正常")]
+        let p = DayTimelineProjection.project(record: rec)
+        XCTAssertEqual(p.actual.count, 1)
+        XCTAssertTrue(p.outOfRange.isEmpty, "常态下不应有越界提示")
     }
 
     func testNowOffsetOnlyWithinDay() {
