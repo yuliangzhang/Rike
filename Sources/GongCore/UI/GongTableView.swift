@@ -531,61 +531,53 @@ private struct ClarityRow: View {
 ///
 /// 样式承载语义：**计划＝虚线描边**（意图，还没发生），**实际＝实心填充**（事实，已发生）。
 /// 这比再多找一个色相更能一眼分清左右两列，而且这个区别本身有意义。
+///
+/// **为什么是 NSViewRepresentable 而不是 SwiftUI 的 TextField：**
+/// 需要「点进来就整段选中」——框里是 21:16 时直接敲 1400 就该变成 14:00，
+/// 而不是插成 `21:161400`。而这件事**只能挂在 mouseDown 之后**：
+/// `NSTextField.mouseDown` 会跑一个模态跟踪循环直到 mouseUp，循环期间它照样泵 runloop，
+/// 所以挂在 SwiftUI `@FocusState` 变化上的 `DispatchQueue.main.async` 会在**循环内部**执行，
+/// 随后到来的 mouseUp 又把插入点设回点击位置，选区就没了。
+/// （这条是实测出来的：模拟 0ms 的瞬时点击会「通过」，模拟真人的 80ms 按住就复现问题。）
+/// `super.mouseDown` 返回时跟踪循环已经结束、mouseUp 已处理完，那时再全选才稳。
 struct TimeEntryField: View {
     enum Style { case plan, actual }
 
     let initial: String
     var style: Style = .plan
     let onCommit: (Int) -> Void
-    @State private var text: String = ""
-    @FocusState private var focused: Bool
+
+    @State private var editing = false
 
     var body: some View {
-        TextField("", text: $text)
-            .textFieldStyle(.plain)
-            .font(Theme.mono(Theme.Size.time, .medium))
-            .monospacedDigit()
-            .foregroundStyle(style == .plan ? Theme.plan : Theme.actual)
-            .multilineTextAlignment(.center)
-            .frame(width: 52)
+        SelectAllOnClickField(initial: initial,
+                              color: style == .plan ? Theme.nsPlan : Theme.nsActual,
+                              editing: $editing,
+                              onCommit: onCommit)
+            .frame(width: 52, height: 17)
             .padding(.vertical, 2)
             .background(background)
-            .focused($focused)
-            .onAppear { text = initial }
-            .onChange(of: initial) { _, new in if !focused { text = new } }
-            .onChange(of: text) { _, new in
-                // 边打边过滤：挡住字母、多余的冒号和第 6 个字符。
-                // 否则要等失焦才发现解析失败、整段被还原，白打一遍。
-                let clean = Self.sanitize(new)
-                if clean != new { text = clean }
-            }
-            .onSubmit(commit)
-            .onChange(of: focused) { _, isFocused in
-                if isFocused { selectAll() } else { commit() }
-            }
     }
 
-    /// 获得**焦点时全选**。
-    ///
-    /// 这是这个框最影响效率的一点：框里是 `21:16`，点进去光标停在点中的位置，
-    /// 直接敲 `1400` 会插成一串垃圾，必须先用鼠标把原值圈掉。全选之后
-    /// 「点进去 → 敲 1400 → 回车」就是 14:00，手不用离开键盘。
-    ///
-    /// 只在**刚获得焦点**时全选；已经聚焦后再点一下仍然是正常的定位光标，
-    /// 想只改分钟还是可以的。
-    ///
-    /// SwiftUI 的 TextField 在 macOS 上由 NSTextField 支持，获得焦点后窗口的
-    /// firstResponder 是它的 field editor（一个 NSTextView）。要等 AppKit 把
-    /// field editor 装好才能全选，所以推迟一个 runloop。
-    /// 拿不到就什么都不做——退化成原来的行为，不会更坏。
-    private func selectAll() {
-        DispatchQueue.main.async {
-            (NSApp.keyWindow?.firstResponder as? NSTextView)?.selectAll(nil)
+    @ViewBuilder
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: 4)
+        switch style {
+        case .plan:
+            shape.strokeBorder(Theme.plan.opacity(editing ? 0.9 : 0.55),
+                               style: StrokeStyle(lineWidth: 1, dash: [3.5, 2.5]))
+        case .actual:
+            ZStack {
+                shape.fill(Theme.actualBG)
+                shape.strokeBorder(Theme.actual.opacity(editing ? 0.9 : 0.35), lineWidth: 1)
+            }
         }
     }
 
     /// 只留数字和一个冒号，最长 5 个字符（`09:30`）。
     /// 全角冒号归一成半角——中文输入法下敲出来的是全角。
+    ///
+    /// **必须幂等**：`controlTextDidChange` 里回写会再触发一次通知，不幂等就是无限循环。
     static func sanitize(_ raw: String) -> String {
         var out = ""
         var sawColon = false
@@ -600,27 +592,116 @@ struct TimeEntryField: View {
         }
         return out
     }
+}
 
-    @ViewBuilder
-    private var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 4)
-        switch style {
-        case .plan:
-            shape.strokeBorder(Theme.plan.opacity(focused ? 0.9 : 0.55),
-                               style: StrokeStyle(lineWidth: 1, dash: [3.5, 2.5]))
-        case .actual:
-            ZStack {
-                shape.fill(Theme.actualBG)
-                shape.strokeBorder(Theme.actual.opacity(focused ? 0.9 : 0.35), lineWidth: 1)
-            }
+// MARK: 点击即全选的 NSTextField
+
+/// 点进来就整段选中的文本框。
+final class ClickSelectsAllTextField: NSTextField {
+    /// 鼠标点击进入时全选。
+    ///
+    /// 关键在于时机：`super.mouseDown` 内部会一直跑到 mouseUp 才返回，
+    /// 所以**返回之后**再全选，才不会被 mouseUp 的插入点定位覆盖掉。
+    override func mouseDown(with event: NSEvent) {
+        // 已经在编辑中的再点一下，是想定位光标（比如只改分钟），此时不要全选
+        let alreadyEditing = currentEditor() != nil
+        super.mouseDown(with: event)
+        guard !alreadyEditing else { return }
+
+        selectText(nil)
+        // 兜底再排一次。`super.mouseDown` 什么时候返回、mouseUp 什么时候把插入点
+        // 设回点击位置，取决于跟踪循环的实现细节——我用合成事件测过，不同的按住时长
+        // 结果并不一致，说明这个时序不该被当成保证。多排一轮 runloop 的代价是零
+        // （已经全选时这是无害的重复），但能挡住「跟踪循环提前返回」的那一支。
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.currentEditor() != nil else { return }
+            self.selectText(nil)
         }
     }
 
-    private func commit() {
-        if let m = GongTime.parseMinutes(text) {
-            onCommit(m)
-        } else {
-            text = initial       // 解析失败就还原，不静默吞掉
+    /// Tab / 程序设焦点进来时也全选。这条路径没有跟踪循环，直接选即可。
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { currentEditor()?.selectAll(nil) }
+        return ok
+    }
+}
+
+private struct SelectAllOnClickField: NSViewRepresentable {
+    let initial: String
+    let color: NSColor
+    @Binding var editing: Bool
+    let onCommit: (Int) -> Void
+
+    func makeNSView(context: Context) -> ClickSelectsAllTextField {
+        let tf = ClickSelectsAllTextField()
+        tf.isBordered = false
+        tf.drawsBackground = false
+        tf.focusRingType = .none
+        tf.alignment = .center
+        tf.lineBreakMode = .byClipping
+        tf.cell?.usesSingleLineMode = true
+        tf.font = NSFont.monospacedDigitSystemFont(ofSize: Theme.Size.time, weight: .medium)
+        tf.delegate = context.coordinator
+        tf.stringValue = initial
+        tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return tf
+    }
+
+    func updateNSView(_ tf: ClickSelectsAllTextField, context: Context) {
+        context.coordinator.parent = self
+        tf.textColor = color
+        // 外部值变化（切日期、从监控填充）只在没人正在编辑时回灌，
+        // 否则会把正在输入的半截内容冲掉。
+        if tf.currentEditor() == nil, tf.stringValue != initial {
+            tf.stringValue = initial
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: SelectAllOnClickField
+        init(_ parent: SelectAllOnClickField) { self.parent = parent }
+
+        /// 边打边过滤：挡住字母、多余的冒号和第 6 个字符。
+        /// 否则要等失焦才发现解析失败、整段被还原，白打一遍。
+        func controlTextDidChange(_ note: Notification) {
+            guard let tf = note.object as? NSTextField else { return }
+            let clean = TimeEntryField.sanitize(tf.stringValue)
+            guard clean != tf.stringValue else { return }
+            // 回写会把光标顶到末尾。这里的输入都很短（≤5 字符），
+            // 而且只有输入了非法字符才会走到这条路，可以接受。
+            tf.stringValue = clean
+            tf.currentEditor()?.selectedRange = NSRange(location: clean.count, length: 0)
+        }
+
+        func controlTextDidBeginEditing(_ note: Notification) {
+            DispatchQueue.main.async { self.parent.editing = true }
+        }
+
+        func controlTextDidEndEditing(_ note: Notification) {
+            DispatchQueue.main.async { self.parent.editing = false }
+            commit(note.object as? NSTextField)
+        }
+
+        /// 回车提交。返回 true 表示已处理，避免 AppKit 再发一声警告音。
+        func control(_ control: NSControl, textView: NSTextView,
+                     doCommandBy sel: Selector) -> Bool {
+            guard sel == #selector(NSResponder.insertNewline(_:)) else { return false }
+            commit(control as? NSTextField)
+            control.window?.makeFirstResponder(nil)   // 收焦点，让人看到格式化后的结果
+            return true
+        }
+
+        private func commit(_ tf: NSTextField?) {
+            guard let tf else { return }
+            if let m = GongTime.parseMinutes(tf.stringValue) {
+                parent.onCommit(m)
+                tf.stringValue = GongTime.formatMinutes(m)   // 立刻显示规范化后的值
+            } else {
+                tf.stringValue = parent.initial              // 解析失败就还原，不静默吞掉
+            }
         }
     }
 }

@@ -35,12 +35,17 @@ enum Theme {
     // MARK: 颜色
 
     /// 明暗双值。**绝不写死单值**——写死的常量在深色下必然崩掉对比度。
-    private static func dyn(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
+    private static func nsDyn(light: (Double, Double, Double),
+                             dark: (Double, Double, Double)) -> NSColor {
+        NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let c = isDark ? dark : light
             return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
-        })
+        }
+    }
+
+    private static func dyn(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(nsColor: nsDyn(light: light, dark: dark))
     }
 
     private static func hex(_ v: UInt32) -> (Double, Double, Double) {
@@ -68,10 +73,13 @@ enum Theme {
 
     // 语义：意图 vs 事实
     /// 计划＝意图，尚未发生。配虚线描边。
-    static let plan      = dyn(light: hex(0x2C5F8C), dark: hex(0x79ADE0))
+    /// 时间输入框是 AppKit 实现的（见 `TimeEntryField`），所以这两个色要出 NSColor 版本。
+    static let nsPlan    = nsDyn(light: hex(0x2C5F8C), dark: hex(0x79ADE0))
+    static let nsActual  = nsDyn(light: hex(0x1B6A57), dark: hex(0x5CC5A5))
+    static let plan      = Color(nsColor: nsPlan)
     static let planBG    = dyn(light: hex(0xE6EEF7), dark: hex(0x1C2E3F))
     /// 实际＝事实，已经发生。配实心填充。
-    static let actual    = dyn(light: hex(0x1B6A57), dark: hex(0x5CC5A5))
+    static let actual    = Color(nsColor: nsActual)
     static let actualBG  = dyn(light: hex(0xE1F0EA), dark: hex(0x153029))
 
     /// 标记色。用于「最重要」、越界提示、其他类应用。**不表示评价**。

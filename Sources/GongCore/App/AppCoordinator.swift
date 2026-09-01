@@ -148,7 +148,7 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = Self.statusMark(alert: false)
+        item.button?.image = Self.markNormal
         item.button?.imagePosition = .imageOnly
         let menu = NSMenu()
         menu.addItem(withTitle: L(.menuOpenMain), action: #selector(openMain), keyEquivalent: "")
@@ -192,8 +192,14 @@ final class AppCoordinator: NSObject, ObservableObject {
         mainWindow?.appearance = pref.nsAppearance
     }
 
+    /// 两张图只画一次。`tick()` 每轮都会调这里，
+    /// 每次都 lockFocus 重画一张 NSImage 是纯浪费。
+    private static let markNormal = statusMark(alert: false)
+    private static let markAlert  = statusMark(alert: true)
+
     private func updateStatusItemTitle() {
-        statusItem?.button?.image = Self.statusMark(alert: breaker.alertActive)
+        let want = breaker.alertActive ? Self.markAlert : Self.markNormal
+        if statusItem?.button?.image !== want { statusItem?.button?.image = want }
     }
 
     @objc private func openMain() { showMainWindow() }
@@ -202,8 +208,25 @@ final class AppCoordinator: NSObject, ObservableObject {
         settingsStore.settings.widgetVisible ? showWidget() : hideWidget()
     }
     @objc private func exportToday() { Task { await dayStore.exportNow(); showMainWindow() } }
+    /// 退出。**只调 terminate，不要自己先 await shutdown。**
+    ///
+    /// 原来写的是 `Task { await shutdown(); NSApp.terminate(nil) }`，那是个死锁：
+    /// 这个 Task 跑在 MainActor 上，它同步调用 `terminate`，AppKit 随即回调
+    /// `applicationShouldTerminate`，后者返回 `.terminateLater` 并再起一个
+    /// `Task { @MainActor ... }` 去 reply。但 MainActor 是串行的，
+    /// 而它此刻**仍被 quit 这个 Task 占着**（terminate 还在栈上没返回），
+    /// 于是 reply 的 Task 永远排不上号，`terminate` 就在嵌套事件循环里等到天荒地老——
+    /// 菜单栏图标和窗口都还在，看起来像「点了退出没反应」。
+    ///
+    /// 正确顺序：菜单动作直接调 `terminate`（此时主线程没有被任何 Task 占用），
+    /// 由 `applicationShouldTerminate` 去做异步 shutdown 再 reply。
+    /// 顺带也消除了 shutdown 被跑两遍的问题。
     @objc private func quit() {
-        Task { await shutdown(); NSApp.terminate(nil) }
+        // 推迟一轮 runloop 再 terminate。菜单动作虽然通常在菜单跟踪结束后才发出，
+        // 但状态栏菜单是跑在跟踪循环里的，在里面启动 terminate 的嵌套等待不稳妥。
+        // 注意这里**必须**用 DispatchQueue 而不是 Task：Task 会占住 MainActor，
+        // 那就又回到上面说的那个死锁了。
+        DispatchQueue.main.async { NSApp.terminate(nil) }
     }
 
     @objc func bringWidgetForward() {
