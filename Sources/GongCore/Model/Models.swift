@@ -363,6 +363,10 @@ struct UsageInterval: Codable, Identifiable, Hashable, Sendable {
     var appName: String
     var start: Date
     var end: Date
+    /// 这段活动**实际发生时**所在的时区，从开启该区间的 `UsageEvent.tz` 传播而来。
+    /// 不能丢：丢了之后「从监控填充」只能拿记录的时区去盖，
+    /// 会把纽约 09:00 的活动写成珀斯 21:00 —— 那是把错误事实写进 DayRecord。
+    var timeZoneIdentifier: String = TimeZone.current.identifier
 
     /// **确定性** id，不用随机 UUID —— 否则同样的事件重跑 reducer 会产生不等的结果，
     /// 幂等性就无法断言。

@@ -233,3 +233,73 @@ final class UsageReducerStateMachineTests: XCTestCase {
         XCTAssertFalse(day.truncated)
     }
 }
+
+/// 第五轮审查：时区必须沿「事件 → 区间 → 实际块」全链路传播。
+final class UsageTimeZonePropagationTests: XCTestCase {
+    private var seq = 0
+    override func setUp() { seq = 0 }
+    private func ev(_ e: UsageEvent.Kind, _ t: Date, tz: String,
+                    _ bid: String? = nil, _ name: String? = nil) -> UsageEvent {
+        seq += 1
+        return UsageEvent(t: t, e: e, runId: "run-1", seq: seq, tz: tz, bundleId: bid, name: name)
+    }
+
+    /// codex r5 的场景：记录建于珀斯的 09-01，人在纽约当地 09-01 09:00–10:00 用 Xcode。
+    /// 那个 instant 落在珀斯的 09-01 21:00–22:00，会被 reducer 纳入当天，
+    /// 但生成的区间必须带 America/New_York，而不是被盖成 Australia/Perth。
+    func testIntervalCarriesEventTimeZoneNotRecordTimeZone() {
+        let key = DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth")
+        // 纽约 2026-09-01 09:00 EDT = 13:00 UTC；珀斯同刻为 09-01 21:00
+        let start = utc(2026, 9, 1, 13, 0)
+        let end   = utc(2026, 9, 1, 14, 0)
+        let events = [
+            ev(.activate, start, tz: "America/New_York", "com.apple.dt.Xcode", "Xcode"),
+            ev(.appStop,  end,   tz: "America/New_York")
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(day.intervals.count, 1)
+        XCTAssertEqual(day.intervals[0].timeZoneIdentifier, "America/New_York",
+                       "区间必须带事件发生地的时区，不能被记录时区盖掉")
+
+        // 用这个区间生成实际块（fillFromMonitor 的等价逻辑）
+        let iv = day.intervals[0]
+        let blk = ActualBlock(start: iv.start, end: iv.end,
+                              timeZoneIdentifier: iv.timeZoneIdentifier,
+                              title: iv.appName, source: .monitor)
+        let label = blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier)
+        XCTAssertTrue(label.hasPrefix("09:00 至 10:00"),
+                      "应显示纽约的 09:00，而不是珀斯的 21:00；实际：\(label)")
+        XCTAssertTrue(label.contains("America/New_York"), "跨时区必须标注；实际：\(label)")
+    }
+
+    /// 同一应用里持续工作时跨越时区变更 → 按心跳切段，误差不超过一个心跳周期。
+    func testTimeZoneChangeMidIntervalSplitsSegment() {
+        let key = DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth")
+        let t0 = utc(2026, 9, 1, 2, 0)
+        let events = [
+            ev(.activate,  t0, tz: "Australia/Perth", "com.apple.dt.Xcode", "Xcode"),
+            ev(.heartbeat, t0.addingTimeInterval(1800), tz: "Australia/Perth"),
+            ev(.heartbeat, t0.addingTimeInterval(3600), tz: "Asia/Singapore"),   // 时区变了
+            ev(.appStop,   t0.addingTimeInterval(5400), tz: "Asia/Singapore")
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(day.intervals.count, 2, "时区变更处应切段")
+        XCTAssertEqual(day.intervals[0].timeZoneIdentifier, "Australia/Perth")
+        XCTAssertEqual(day.intervals[1].timeZoneIdentifier, "Asia/Singapore")
+        let total = day.intervals.reduce(0.0) { $0 + $1.seconds }
+        XCTAssertEqual(total, 5400, accuracy: 2, "切段不得丢失或重复总时长")
+    }
+
+    func testSameTimeZoneDoesNotSplit() {
+        let key = DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth")
+        let t0 = utc(2026, 9, 1, 2, 0)
+        let events = [
+            ev(.activate,  t0, tz: "Australia/Perth", "com.apple.dt.Xcode", "Xcode"),
+            ev(.heartbeat, t0.addingTimeInterval(1800), tz: "Australia/Perth"),
+            ev(.heartbeat, t0.addingTimeInterval(3600), tz: "Australia/Perth"),
+            ev(.appStop,   t0.addingTimeInterval(5400), tz: "Australia/Perth")
+        ]
+        let day = UsageReducer.reduce(events: events, for: key)
+        XCTAssertEqual(day.intervals.count, 1, "时区没变就不应该切段")
+    }
+}

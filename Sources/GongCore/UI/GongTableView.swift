@@ -360,8 +360,9 @@ struct GongTableView: View {
                     $0.source == .monitor && abs($0.start.timeIntervalSince(iv.start)) < 60
                 }
                 guard !exists else { continue }
+                // 用区间**自己**的时区，不是记录的时区
                 rec.actual.append(ActualBlock(start: iv.start, end: iv.end,
-                                              timeZoneIdentifier: rec.key.timeZoneIdentifier,
+                                              timeZoneIdentifier: iv.timeZoneIdentifier,
                                               title: iv.appName, source: .monitor))
             }
         }

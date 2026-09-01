@@ -41,6 +41,7 @@ enum UsageReducer {
 
         // 状态机
         var currentApp: (bundleId: String, name: String)?
+        var currentTZ: String = key.timeZoneIdentifier
         var openedAt: Date?
         var suspended = false            // idle / sleep / session inactive
         var lastAlive: Date?             // 最后一条可信的存活证据
@@ -51,7 +52,8 @@ enum UsageReducer {
                 return
             }
             intervals.append(UsageInterval(bundleId: app.bundleId, appName: app.name,
-                                           start: start, end: t))
+                                           start: start, end: t,
+                                           timeZoneIdentifier: currentTZ))
             openedAt = nil
         }
 
@@ -68,6 +70,7 @@ enum UsageReducer {
                     continue
                 }
                 currentApp = (bid, ev.name ?? bid)
+                currentTZ = ev.tz
                 suspended = false
                 openedAt = ev.t
 
@@ -87,6 +90,13 @@ enum UsageReducer {
 
             case .heartbeat:
                 lastAlive = ev.t
+                // 心跳携带时区：用户在同一应用里持续工作时跨越了时区变更，
+                // 在此切段，把标签误差限制在一个心跳周期内。
+                if ev.tz != currentTZ {
+                    closeCurrent(at: ev.t)
+                    currentTZ = ev.tz
+                    if currentApp != nil && !suspended { openedAt = ev.t }
+                }
 
             case .appStop:
                 closeCurrent(at: ev.t)
@@ -115,7 +125,9 @@ enum UsageReducer {
             let s = max(iv.start, dayStart)
             let e = min(iv.end, dayEnd)
             guard e > s else { return nil }
-            return UsageInterval(bundleId: iv.bundleId, appName: iv.appName, start: s, end: e)
+            return UsageInterval(bundleId: iv.bundleId, appName: iv.appName,
+                                 start: s, end: e,
+                                 timeZoneIdentifier: iv.timeZoneIdentifier)
         }
         .sorted { $0.start < $1.start }
 
