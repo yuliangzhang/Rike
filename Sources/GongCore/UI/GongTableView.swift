@@ -2,7 +2,12 @@ import SwiftUI
 import AppKit
 
 /// 「工」字表 —— 本应用的核心。
-/// 上横 TODO（通栏）／ 中竖 计划|实际（左右内缩，形成工字剪影）／ 下横 总结（通栏）
+///
+/// 上横 TODO（通栏，仪表）／ 中竖 计划|实际（左右内缩，形成工字剪影）／ 下横 总结（通栏，手记）
+///
+/// 方向 C「承重」：按「工」字本身的分工排版。上横与中竖是**仪表**——数据，
+/// 无衬线加等宽，紧凑精确；下横是**手记**——写作，衬线加大行距。
+/// 这产品本来就是记录仪和反思本两件事缝在一起，让形式承认它，比强行统一好。
 struct GongTableView: View {
     @ObservedObject var store: DayStore
     @ObservedObject var settings: SettingsStore
@@ -13,30 +18,33 @@ struct GongTableView: View {
     private enum Field: Hashable { case newTodo, todo(UUID), touched, freeText }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                topBand          // 工 · 上横
-                stem             // 工 · 中竖
-                bottomBand       // 工 · 下横
-            }
+        ScrollView { tableContent }
+            .background(Theme.inset)
+    }
+
+    /// ScrollView 在 `ImageRenderer` 下不会布局内容，离屏渲染直接用这个。
+    var tableContent: some View {
+        VStack(spacing: 0) {
+            topBand          // 工 · 上横
+            stem             // 工 · 中竖
+            bottomBand       // 工 · 下横
         }
-        .background(Color(nsColor: .textBackgroundColor))
     }
 
     // MARK: - 工 · 上横：今日 TODO
 
     private var topBand: some View {
-        GongBand(title: "今日 TODO", trailing: AnyView(dateNav)) {
-            VStack(alignment: .leading, spacing: 4) {
+        GongBand(title: L(.bandTodo), beamEdge: .bottom, trailing: AnyView(dateNav)) {
+            VStack(alignment: .leading, spacing: 7) {
                 ForEach(store.record.widgetTodos) { todo in
                     todoRow(todo)
                 }
-                HStack(spacing: 8) {
-                    Text("＋").font(Theme.monoSized(12)).foregroundStyle(.tertiary)
-                        .frame(width: 62, alignment: .trailing)
-                    TextField("新增任务，回车确认", text: $newTodoText)
+                HStack(spacing: 10) {
+                    Text("＋").font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
+                        .frame(width: 76, alignment: .trailing)
+                    TextField(L(.todoPlaceholder), text: $newTodoText)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13))
+                        .font(Theme.ui(Theme.Size.body))
                         .focused($focusedField, equals: .newTodo)
                         .onSubmit(addTodo)
                 }
@@ -46,7 +54,7 @@ struct GongTableView: View {
     }
 
     private func todoRow(_ todo: Todo) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             kindBadge(todo)
             Toggle("", isOn: Binding(
                 get: { todo.status == .done },
@@ -61,38 +69,39 @@ struct GongTableView: View {
                 .toggleStyle(.checkbox)
 
             BufferedTextField(contextID: ctx("todo", todo.id.uuidString),
-                              value: todo.text, font: .system(size: 13)) { v in
+                              value: todo.text,
+                              font: Theme.ui(Theme.Size.body)) { v in
                 store.mutate { rec in
                     if let i = rec.todos.firstIndex(where: { $0.id == todo.id }) {
                         rec.todos[i].text = v
                     }
                 }
             }
-            .foregroundStyle(todo.status == .done ? .secondary : .primary)
-            .strikethrough(todo.status == .done, color: .secondary)
+            .foregroundStyle(todo.status == .done ? Theme.muted : Theme.ink)
+            .strikethrough(todo.status == .done, color: Theme.faint)
 
             Button {
                 store.mutate { rec in rec.todos.removeAll { $0.id == todo.id } }
             } label: {
-                Image(systemName: "xmark").font(.system(size: 9))
+                Image(systemName: "xmark").font(.system(size: 10))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
-            .help("删除")
+            .foregroundStyle(Theme.faint)
+            .help(L(.delete))
         }
     }
 
     /// 下限 / 最重要各限一条 —— 约束在模型层，UI 只是它的投影。
     private func kindBadge(_ todo: Todo) -> some View {
         Menu {
-            Button("⌂ 下限（再累也做得到）") { setKind(.floor, todo) }
-            Button("★ 最重要（做成了今天就不白过）") { setKind(.mit, todo) }
-            Button("· 普通") { setKind(.normal, todo) }
+            Button(L(.kindFloorMenu))  { setKind(.floor, todo) }
+            Button(L(.kindMitMenu))    { setKind(.mit, todo) }
+            Button(L(.kindNormalMenu)) { setKind(.normal, todo) }
         } label: {
             Text(todo.kind == .normal ? "·" : "\(todo.kind.marker) \(todo.kind.label)")
-                .font(Theme.monoSized(9))
+                .font(Theme.ui(Theme.Size.label, todo.kind == .normal ? .regular : .semibold))
                 .foregroundStyle(badgeColor(todo.kind))
-                .frame(width: 62, alignment: .trailing)
+                .frame(width: 76, alignment: .trailing)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -102,8 +111,8 @@ struct GongTableView: View {
     private func badgeColor(_ k: TodoKind) -> Color {
         switch k {
         case .floor:  return Theme.actual
-        case .mit:    return Theme.warn
-        case .normal: return Color.secondary.opacity(0.6)
+        case .mit:    return Theme.mark
+        case .normal: return Theme.faint
         }
     }
 
@@ -124,17 +133,19 @@ struct GongTableView: View {
     // MARK: 日期导航
 
     private var dateNav: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button { shiftDay(-1) } label: { Image(systemName: "chevron.left") }
                 .buttonStyle(.borderless)
             Text(store.record.key.displayLabel)
-                .font(Theme.monoSized(12))
-                .frame(minWidth: 122)
+                .font(Theme.mono(Theme.Size.meta))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink2)
+                .frame(minWidth: 128)
             Button { shiftDay(1) } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(.borderless)
-            Button("今天") { goToday() }
+            Button(L(.today)) { goToday() }
                 .buttonStyle(.borderless)
-                .font(.system(size: 11))
+                .font(Theme.ui(Theme.Size.meta))
                 .keyboardShortcut("t", modifiers: .command)
         }
     }
@@ -162,106 +173,103 @@ struct GongTableView: View {
     // MARK: - 工 · 中竖：Ribbon + 计划 | 实际
 
     private var projection: DayProjection {
-        DayTimelineProjection.project(record: store.record, now: Date())
+        DayTimelineProjection.project(record: store.record, now: Date(), lang: UILang.current)
     }
 
     private var stem: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             let proj = projection
             if let recTZ = timeZoneMismatch { timeZoneNote(recTZ) }
             RibbonView(projection: proj)
             if !proj.outOfRange.isEmpty { outOfRangeNote(proj.outOfRange) }
             HStack(alignment: .top, spacing: 0) {
                 plannedColumn
-                Divider().overlay(Theme.hairline)
+                Rectangle().fill(Theme.rule).frame(width: 1)
                 actualColumn
             }
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .background(Theme.surface)
+            .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radius).strokeBorder(Theme.rule))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radius))
         }
-        .padding(.horizontal, 52)          // 内缩 → 工字剪影
-        .padding(.vertical, 16)
+        .padding(.horizontal, Theme.Metric.stemInset)   // 内缩 → 工字剪影
+        .padding(.vertical, 20)
     }
 
     /// 记录时区 ≠ 当前系统时区时常驻提示。统计与时间轴都按**记录建立时的时区**
     /// 计算日界，这会让「今天」的边界与你此刻所在地不同——必须说清楚，不能让用户自己猜。
     private func timeZoneNote(_ recTZ: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("这一天按 \(recTZ) 的日界计算")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.plan)
-            Text("记录建立于该时区。你当前在 \(TimeZone.current.identifier)，"
-                 + "因此时间轴与使用统计的日界与你此刻的当地日期不同，部分活动会归到相邻的一天。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        calloutBox(color: Theme.plan) {
+            Text(L(.tzNoteTitle, recTZ))
+                .font(Theme.ui(Theme.Size.meta, .semibold)).foregroundStyle(Theme.plan)
+            Explain(L(.tzNoteBody, TimeZone.current.identifier))
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.plan.opacity(0.08))
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.plan.opacity(0.35)))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     /// 有实际记录落在当日投影范围之外时，明确告知——绝不静默隐藏数据。
     private func outOfRangeNote(_ blocks: [OutOfRangeBlock]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("\(blocks.count) 条实际记录落在该日时间轴之外")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.warn)
-            Text("这一天按 \(store.record.key.timeZoneIdentifier) 的日界投影。以下记录发生在该范围外，画不到轴上，但仍在记录里，也会正常导出。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        calloutBox(color: Theme.mark) {
+            Text(L(.outOfRangeTitle, blocks.count))
+                .font(Theme.ui(Theme.Size.meta, .semibold)).foregroundStyle(Theme.mark)
+            Explain(L(.outOfRangeBody, store.record.key.timeZoneIdentifier))
             ForEach(blocks) { b in
                 Text("· \(b.label)（\(b.timeZoneIdentifier)）\(b.title)")
-                    .font(Theme.monoSized(10)).foregroundStyle(.secondary)
+                    .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.muted)
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.warn.opacity(0.08))
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.warn.opacity(0.4)))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    @ViewBuilder
+    private func calloutBox<C: View>(color: Color, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 5) { content() }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.09))
+            .overlay(alignment: .leading) { Rectangle().fill(color).frame(width: 3) }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
     }
 
     private var plannedColumn: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            columnHeader("计划", color: Theme.plan,
+        VStack(alignment: .leading, spacing: 6) {
+            columnHeader(L(.colPlan), color: Theme.plan,
                          sum: GongTime.formatMinutesDuration(
                             store.record.planned.reduce(0) { $0 + $1.durationMinutes }))
 
             ForEach(store.record.planned) { blk in
                 HStack(spacing: 8) {
-                    timeField(text: GongTime.formatMinutes(blk.startMinute),
+                    timeField(text: GongTime.formatMinutes(blk.startMinute), style: .plan,
                               id: ctx("plannedStart", blk.id.uuidString)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: m, end: $0.endMinute) }
                     }
-                    Text("至").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    timeField(text: GongTime.formatMinutes(blk.endMinute),
+                    rangeSeparator
+                    timeField(text: GongTime.formatMinutes(blk.endMinute), style: .plan,
                               id: ctx("plannedEnd", blk.id.uuidString)) { m in
                         updatePlanned(blk.id) { $0.setRange(start: $0.startMinute, end: m) }
                     }
                     BufferedTextField(contextID: ctx("planned", blk.id.uuidString),
-                                      placeholder: "内容", value: blk.title) { v in
+                                      placeholder: L(.blockContent), value: blk.title,
+                                      font: Theme.ui(Theme.Size.body)) { v in
                         updatePlanned(blk.id) { $0.title = v }
                     }
                     deleteButton { store.mutate { $0.planned.removeAll { $0.id == blk.id } } }
                 }
             }
 
-            Button("＋ 新增计划") {
+            Button(L(.addPlan)) {
                 store.mutate { rec in
                     let last = rec.planned.last?.endMinute ?? (9 * 60)
                     rec.planned.append(PlannedBlock(start: last, end: min(last + 60, 1440)))
                 }
             }
-            .buttonStyle(.plain).font(Theme.monoSized(10)).foregroundStyle(.secondary)
-            .padding(.top, 2)
+            .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.muted)
+            .padding(.top, 4)
         }
-        .padding(11)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var actualColumn: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            columnHeader("实际", color: Theme.actual,
+        VStack(alignment: .leading, spacing: 6) {
+            columnHeader(L(.colActual), color: Theme.actual,
                          sum: GongTime.formatDuration(
                             store.record.actual.reduce(0) { $0 + $1.durationSeconds }))
 
@@ -269,24 +277,25 @@ struct GongTableView: View {
                 HStack(spacing: 8) {
                     // 时间可改：我们并不是一直坐在电脑前，监控填进来的区间和
                     // 「＋新增」给的默认一小时都只是起点，必须让人改成事实。
-                    timeField(text: GongTime.formatMinutes(blk.startWallClockMinutes),
+                    timeField(text: GongTime.formatMinutes(blk.startWallClockMinutes), style: .actual,
                               id: ctx("actualStart", blk.id.uuidString)) { m in
                         updateActual(blk.id) { $0.setStartWallClock(m) }
                     }
-                    Text("至").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    timeField(text: GongTime.formatMinutes(blk.endWallClockMinutes),
+                    rangeSeparator
+                    timeField(text: GongTime.formatMinutes(blk.endWallClockMinutes), style: .actual,
                               id: ctx("actualEnd", blk.id.uuidString)) { m in
                         updateActual(blk.id) { $0.setEndWallClock(m) }
                     }
                     if let tz = blk.foreignTimeZoneLabel(
                         recordTimeZoneIdentifier: store.record.key.timeZoneIdentifier) {
                         Text(tz)
-                            .font(Theme.monoSized(9)).foregroundStyle(Theme.warn)
+                            .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.mark)
                             .lineLimit(1).truncationMode(.middle)
-                            .help("这条记录发生在 \(tz)，时间按该时区显示与编辑")
+                            .help(L(.foreignTZHelp, tz))
                     }
                     BufferedTextField(contextID: ctx("actual", blk.id.uuidString),
-                                      placeholder: "内容", value: blk.title) { v in
+                                      placeholder: L(.blockContent), value: blk.title,
+                                      font: Theme.ui(Theme.Size.body)) { v in
                         store.mutate { rec in
                             if let i = rec.actual.firstIndex(where: { $0.id == blk.id }) {
                                 rec.actual[i].title = v
@@ -297,40 +306,48 @@ struct GongTableView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                Button("＋ 新增") { addActualManually() }
-                    .buttonStyle(.plain).font(Theme.monoSized(10)).foregroundStyle(.secondary)
-                Button("⟲ 从监控填充") { fillFromMonitor() }
-                    .buttonStyle(.plain).font(Theme.monoSized(10)).foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                Button(L(.addActual)) { addActualManually() }
+                    .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.muted)
+                Button(L(.fillFromMonitor)) { fillFromMonitor() }
+                    .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.muted)
                     .disabled(store.usage == nil)
-                    .help("把今天前台停留超过 10 分钟的应用区间填入实际列")
+                    .help(L(.fillFromMonitorHelp))
             }
-            .padding(.top, 2)
+            .padding(.top, 4)
         }
-        .padding(11)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func columnHeader(_ title: String, color: Color, sum: String) -> some View {
-        HStack {
-            Text(title).font(.system(size: 12, weight: .bold)).foregroundStyle(color)
-            Spacer()
-            Text("共 \(sum)").font(Theme.monoSized(9)).foregroundStyle(.tertiary)
-        }
-        .padding(.bottom, 4)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+    private var rangeSeparator: some View {
+        Text(L(.rangeSep)).font(Theme.ui(Theme.Size.meta)).foregroundStyle(Theme.faint)
     }
 
-    private func timeField(text: String, id: String,
+    private func columnHeader(_ title: String, color: Color, sum: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(Theme.ui(Theme.Size.panelTitle, .bold))
+                .tracking(0.4).foregroundStyle(color)
+            Spacer()
+            Text(L(.colTotal, sum))
+                .font(Theme.mono(Theme.Size.label)).monospacedDigit()
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(.bottom, 7)
+        .overlay(alignment: .bottom) { Rectangle().fill(color.opacity(0.55)).frame(height: 1.5) }
+        .padding(.bottom, 4)
+    }
+
+    private func timeField(text: String, style: TimeEntryField.Style, id: String,
                            onCommit: @escaping (Int) -> Void) -> some View {
         // .id() 让换日时底层 NSTextField 连同未提交内容一起重建，
         // 杜绝 r3 那类「上一天的输入落进新一天」的缺陷。
-        TimeEntryField(initial: text, onCommit: onCommit).id(id)
+        TimeEntryField(initial: text, style: style, onCommit: onCommit).id(id)
     }
 
     private func deleteButton(_ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: "xmark").font(.system(size: 8)) }
-            .buttonStyle(.plain).foregroundStyle(.tertiary)
+        Button(action: action) { Image(systemName: "xmark").font(.system(size: 9)) }
+            .buttonStyle(.plain).foregroundStyle(Theme.faint)
     }
 
     private func updatePlanned(_ id: UUID, _ change: (inout PlannedBlock) -> Void) {
@@ -360,17 +377,16 @@ struct GongTableView: View {
         return recTZ == sysTZ ? nil : recTZ
     }
 
-    /// R6 的回报：把真实的前台区间转成「实际」条目。
+    /// 把真实的前台区间转成「实际」条目。
     private func fillFromMonitor() {
         guard let usage = store.usage else { return }
         let merged = usage.intervals.filter { $0.seconds >= 600 }   // 10 分钟以上才值得记
         guard !merged.isEmpty else {
             // 不要静默什么都不做 —— 说明为什么没有可填的内容
             if let recTZ = timeZoneMismatch {
-                store.note(.warning, "没有可填充的区间。这一天按 \(recTZ) 的日界统计（记录建于该时区），"
-                                     + "你当前在 \(TimeZone.current.identifier)，本时段的活动可能被归到相邻的一天。")
+                store.note(.warning, L(.noFillIntervalsTZ, recTZ, TimeZone.current.identifier))
             } else {
-                store.note(.info, "这一天还没有超过 10 分钟的前台区间可供填充。")
+                store.note(.info, L(.noFillIntervals))
             }
             return
         }
@@ -388,20 +404,21 @@ struct GongTableView: View {
         }
     }
 
-    // MARK: - 工 · 下横：今日总结
+    // MARK: - 工 · 下横：今日总结（手记）
 
     private var bottomBand: some View {
-        GongBand(title: "今日总结", trailing: AnyView(statusLine)) {
-            VStack(alignment: .leading, spacing: 12) {
-                labeledEditor("触动", hint: "今天最触动我的一件事，好坏都算，写细",
-                              value: store.record.summary.touched) { v in
+        GongBand(title: L(.bandSummary), beamEdge: .top,
+                 trailing: AnyView(statusLine), journal: true) {
+            VStack(alignment: .leading, spacing: 18) {
+                labeledEditor(L(.summaryTouched), hint: L(.summaryTouchedHint),
+                              value: store.record.summary.touched, serif: true) { v in
                     store.mutate { $0.summary.touched = v }
                 }
 
                 clarityBlock
 
-                labeledEditor("备注", hint: "可留空",
-                              value: store.record.summary.freeText) { v in
+                labeledEditor(L(.summaryNote), hint: L(.summaryNoteHint),
+                              value: store.record.summary.freeText, serif: true) { v in
                     store.mutate { $0.summary.freeText = v }
                 }
             }
@@ -410,23 +427,23 @@ struct GongTableView: View {
 
     /// 中性措辞：「已完成 / 未记录」，不是「✓ 达成 / ✗ 未达成」。
     private var statusLine: some View {
-        HStack(spacing: 14) {
-            Text("下限：\(store.record.floorStatus.label)")
-            Text("最重要：\(store.record.mitStatus.label)")
+        HStack(spacing: 16) {
+            Text(L(.statusFloor, store.record.floorStatus.label))
+            Text(L(.statusMit, store.record.mitStatus.label))
         }
-        .font(Theme.monoSized(10))
-        .foregroundStyle(.secondary)
+        .font(Theme.ui(Theme.Size.label, .medium))
+        .foregroundStyle(Theme.muted)
     }
 
     private var clarityBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("模糊清单").font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
+                MicroLabel(text: L(.clarityTitle))
                 Spacer()
-                Button("＋ 拆解一条") {
+                Button(L(.clarityAdd)) {
                     store.mutate { $0.summary.clarity.append(ClarityEntry()) }
                 }
-                .buttonStyle(.plain).font(Theme.monoSized(10)).foregroundStyle(.secondary)
+                .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.muted)
             }
             ForEach(store.record.summary.clarity) { entry in
                 ClarityRow(entry: entry, store: store)
@@ -434,12 +451,17 @@ struct GongTableView: View {
         }
     }
 
-    private func labeledEditor(_ label: String, hint: String,
-                               value: String, onChange: @escaping (String) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
+    private func labeledEditor(_ label: String, hint: String, value: String,
+                               serif: Bool = false,
+                               onChange: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            MicroLabel(text: label)
             BufferedTextEditor(contextID: ctx("summary", label), value: value,
-                               hint: hint, onChange: onChange)
+                               hint: hint,
+                               font: serif ? Theme.serif(Theme.Size.bodyLarge)
+                                           : Theme.ui(Theme.Size.body),
+                               lineSpacing: serif ? 6 : 2,
+                               onChange: onChange)
         }
     }
 
@@ -458,37 +480,39 @@ private struct ClarityRow: View {
     private var dayKey: String { store.record.key.date }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            field("01 卡住的具体位置", entry.stuckOn) { v in update { $0.stuckOn = v } }
-            field("02 真正想逃开的是", entry.escapingFrom) { v in update { $0.escapingFrom = v } }
-            field("03 最坏情况", entry.worstCase) { v in update { $0.worstCase = v } }
-            field("04 明天 30 分钟内的第一步", entry.firstStep) { v in update { $0.firstStep = v } }
+        VStack(alignment: .leading, spacing: 4) {
+            field(L(.clarity01), entry.stuckOn)      { v in update { $0.stuckOn = v } }
+            field(L(.clarity02), entry.escapingFrom) { v in update { $0.escapingFrom = v } }
+            field(L(.clarity03), entry.worstCase)    { v in update { $0.worstCase = v } }
+            field(L(.clarity04), entry.firstStep)    { v in update { $0.firstStep = v } }
             HStack {
                 // 第 04 栏是完成判据 —— 没拆出动作就不算写完
-                Text(entry.isComplete ? "已拆出具体动作" : "第 04 栏还空着，没拆出动作就不算写完")
-                    .font(Theme.monoSized(9))
-                    .foregroundStyle(entry.isComplete ? Theme.actual : Theme.warn)
+                Text(entry.isComplete ? L(.clarityDone) : L(.clarityUndone))
+                    .font(Theme.ui(Theme.Size.label, .medium))
+                    .foregroundStyle(entry.isComplete ? Theme.actual : Theme.mark)
                 Spacer()
-                Button("删除") {
+                Button(L(.delete)) {
                     store.mutate { $0.summary.clarity.removeAll { $0.id == entry.id } }
                 }
-                .buttonStyle(.plain).font(Theme.monoSized(9)).foregroundStyle(.tertiary)
+                .buttonStyle(.plain).font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
             }
+            .padding(.top, 3)
         }
-        .padding(8)
-        .background(Color.primary.opacity(0.03))
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(11)
+        .background(Theme.inset)
+        .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall).strokeBorder(Theme.rule))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
     }
 
     private func field(_ label: String, _ value: String,
                        _ set: @escaping (String) -> Void) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Text(label)
-                .font(Theme.monoSized(9)).foregroundStyle(.tertiary)
-                .frame(width: 168, alignment: .leading)
+                .font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.faint)
+                .frame(width: 250, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)   // 英文更长，允许折行而不是截断
             BufferedTextField(contextID: "\(dayKey)|clarity|\(entry.id.uuidString)|\(label)",
-                              value: value, onChange: set)
+                              value: value, font: Theme.ui(Theme.Size.body), onChange: set)
         }
     }
 
@@ -504,8 +528,14 @@ private struct ClarityRow: View {
 // MARK: - 宽松时间输入
 
 /// 支持 `9` / `930` / `9:30` / `09:30`，失焦或回车时解析。
-private struct TimeEntryField: View {
+///
+/// 样式承载语义：**计划＝虚线描边**（意图，还没发生），**实际＝实心填充**（事实，已发生）。
+/// 这比再多找一个色相更能一眼分清左右两列，而且这个区别本身有意义。
+struct TimeEntryField: View {
+    enum Style { case plan, actual }
+
     let initial: String
+    var style: Style = .plan
     let onCommit: (Int) -> Void
     @State private var text: String = ""
     @FocusState private var focused: Bool
@@ -513,13 +543,33 @@ private struct TimeEntryField: View {
     var body: some View {
         TextField("", text: $text)
             .textFieldStyle(.plain)
-            .font(Theme.monoSized(11))
-            .frame(width: 44)
+            .font(Theme.mono(Theme.Size.time, .medium))
+            .monospacedDigit()
+            .foregroundStyle(style == .plan ? Theme.plan : Theme.actual)
+            .multilineTextAlignment(.center)
+            .frame(width: 52)
+            .padding(.vertical, 2)
+            .background(background)
             .focused($focused)
             .onAppear { text = initial }
             .onChange(of: initial) { _, new in if !focused { text = new } }
             .onSubmit(commit)
             .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: 4)
+        switch style {
+        case .plan:
+            shape.strokeBorder(Theme.plan.opacity(focused ? 0.9 : 0.55),
+                               style: StrokeStyle(lineWidth: 1, dash: [3.5, 2.5]))
+        case .actual:
+            ZStack {
+                shape.fill(Theme.actualBG)
+                shape.strokeBorder(Theme.actual.opacity(focused ? 0.9 : 0.35), lineWidth: 1)
+            }
+        }
     }
 
     private func commit() {

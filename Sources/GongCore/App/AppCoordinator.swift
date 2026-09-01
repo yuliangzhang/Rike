@@ -24,6 +24,7 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func start() async {
         await settingsStore.load()
+        applyAppearance(settingsStore.settings.appearance)
         dayStore.settingsProvider = { [settingsStore] in settingsStore.settings }
         monitor.settingsProvider = { [settingsStore] in settingsStore.settings }
 
@@ -116,19 +117,34 @@ final class AppCoordinator: NSObject, ObservableObject {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "工"
         let menu = NSMenu()
-        menu.addItem(withTitle: "打开主窗口", action: #selector(openMain), keyEquivalent: "")
+        menu.addItem(withTitle: L(.menuOpenMain), action: #selector(openMain), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "把挂件提到最前", action: #selector(bringWidgetForward), keyEquivalent: "")
-            .target = self
-        menu.addItem(withTitle: "显示／隐藏挂件", action: #selector(toggleWidget), keyEquivalent: "")
-            .target = self
+        menu.addItem(withTitle: L(.menuBringWidgetFront),
+                     action: #selector(bringWidgetForward), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L(.menuToggleWidget),
+                     action: #selector(toggleWidget), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "立即导出今天", action: #selector(exportToday), keyEquivalent: "")
-            .target = self
+        menu.addItem(withTitle: L(.menuExportToday),
+                     action: #selector(exportToday), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出 Gong", action: #selector(quit), keyEquivalent: "q").target = self
+        menu.addItem(withTitle: L(.menuQuit, L(.appName)),
+                     action: #selector(quit), keyEquivalent: "q").target = self
         item.menu = menu
         statusItem = item
+    }
+
+    /// 语言变了要重建菜单：NSMenu 的标题是构建时定死的字符串，不会自己刷新。
+    private func rebuildStatusMenu() {
+        guard let item = statusItem else { return }
+        NSStatusBar.system.removeStatusItem(item)
+        statusItem = nil
+        installStatusItem()
+        updateStatusItemTitle()
+    }
+
+    /// 应用外观偏好。改 NSApp.appearance 后，Theme 里所有动态色会一起解析成对应外观。
+    func applyAppearance(_ pref: AppearancePreference) {
+        NSApp.appearance = pref.nsAppearance
     }
 
     private func updateStatusItemTitle() {
@@ -229,12 +245,14 @@ final class AppCoordinator: NSObject, ObservableObject {
                 store: dayStore, settings: settingsStore, monitor: monitor, breaker: breaker,
                 onWidgetModeChange: { [weak self] m in self?.applyWidgetMode(m) },
                 onWidgetVisibilityChange: { [weak self] v in self?.setWidgetVisible(v) },
-                onMonitoringChange: { [weak self] on in self?.setMonitoring(on) })
+                onMonitoringChange: { [weak self] on in self?.setMonitoring(on) },
+                onAppearanceChange: { [weak self] p in self?.applyAppearance(p) },
+                onLanguageChange: { [weak self] _ in self?.rebuildStatusMenu() })
 
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
                              backing: .buffered, defer: false)
-            w.title = "工字表 Gong"
+            w.title = L(.appName)
             w.contentView = NSHostingView(rootView: view)
             w.center()
             w.isReleasedWhenClosed = false

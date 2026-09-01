@@ -86,7 +86,7 @@ final class BreakerEngine: ObservableObject {
     }
 
     var timerLabel: String {
-        timerRemaining == 0 ? "结束"
+        timerRemaining == 0 ? L(.brkEnded)
             : String(format: "%d:%02d", timerRemaining / 60, timerRemaining % 60)
     }
 
@@ -115,7 +115,7 @@ final class BreakerEngine: ObservableObject {
 
     /// 事实陈述，不做连续天数。
     var lastInterruptionLabel: String {
-        guard let d = lastInterruptionDay else { return "无记录" }
+        guard let d = lastInterruptionDay else { return L(.brkNoRecord) }
         return String(d.dropFirst(5))     // "08-25"
     }
 }

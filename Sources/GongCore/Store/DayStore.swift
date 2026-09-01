@@ -48,7 +48,7 @@ final class DayStore: ObservableObject {
             // 只要还有未落盘的内容，就不能替换 record。
             guard ok, !isDirty else {
                 notice = Notice(level: .warning,
-                                text: "当前内容尚未全部保存，已取消切换日期。稍后再试或先解决保存失败的原因。")
+                                text: L(.noticeSwitchBlocked))
                 return false
             }
         }
@@ -66,7 +66,7 @@ final class DayStore: ObservableObject {
             }
         } catch {
             record = DayRecord(key: dayKey)
-            notice = Notice(level: .warning, text: "读取当日记录失败：\(error.localizedDescription)")
+            notice = Notice(level: .warning, text: L(.noticeReadFailed, error.localizedDescription))
         }
         isDirty = false
         savedRevision = record.revision
@@ -75,7 +75,7 @@ final class DayStore: ObservableObject {
         // 而不是悄悄用当前时区重算它。
         if record.key.timeZoneIdentifier != dayKey.timeZoneIdentifier {
             notice = Notice(level: .info,
-                            text: "这一天记录于 \(record.key.timeZoneIdentifier)，按记录时的时区显示。")
+                            text: L(.noticeRecordTZ, record.key.timeZoneIdentifier))
         }
         await refreshUsage()
         return true
@@ -128,7 +128,7 @@ final class DayStore: ObservableObject {
         do {
             try await store.write(snapshot, to: GongPaths.dayFile(snapshot.date))
         } catch {
-            notice = Notice(level: .warning, text: "保存失败：\(error.localizedDescription)")
+            notice = Notice(level: .warning, text: L(.noticeSaveFailed, error.localizedDescription))
             return false
         }
         // 只有当「当前仍是同一条记录」时才更新已保存水位。
@@ -174,26 +174,26 @@ final class DayStore: ObservableObject {
                     isDirty = record.revision > savedRevision
                 }
             } catch {
-                notice = Notice(level: .warning, text: "导出状态保存失败：\(error.localizedDescription)")
+                notice = Notice(level: .warning, text: L(.noticeExportStateFailed, error.localizedDescription))
                 scheduleSave()
             }
         }
 
         switch outcome {
         case .created(let u):
-            notice = Notice(level: .info, text: "已导出：\(u.lastPathComponent)")
+            notice = Notice(level: .info, text: L(.noticeExported, u.lastPathComponent))
         case .updated(let u):
-            notice = Notice(level: .info, text: "已更新：\(u.lastPathComponent)")
+            notice = Notice(level: .info, text: L(.noticeUpdated, u.lastPathComponent))
         case .updatedUnsynced(let u, let detail):
             notice = Notice(level: .warning,
-                            text: "已写入 \(u.lastPathComponent)，但磁盘未确认持久化（\(detail)）。内容已就位，断电时可能丢失这一次写入。")
+                            text: L(.noticeUnsynced, u.lastPathComponent, detail))
         case .unchanged(let u):
             if !silentWhenUnchanged {
-                notice = Notice(level: .info, text: "内容无变化，未写入：\(u.lastPathComponent)")
+                notice = Notice(level: .info, text: L(.noticeNoChange, u.lastPathComponent))
             }
         case .conflict(let u):
             notice = Notice(level: .warning,
-                            text: "目标文件被外部修改或非本应用生成，已另存为 \(u.lastPathComponent)，原文件未改动")
+                            text: L(.noticeConflict, u.lastPathComponent))
         case .failed(let msg):
             notice = Notice(level: .warning, text: msg)
         }
@@ -217,7 +217,7 @@ final class DayStore: ObservableObject {
             savedRevision = record.revision
             isDirty = false
         } catch {
-            NSLog("Gong: 退出前保存失败 %@", String(describing: error))
+            NSLog("Rike: save on quit failed %@", String(describing: error))
         }
     }
 }

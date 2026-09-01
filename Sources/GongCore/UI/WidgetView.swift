@@ -14,61 +14,62 @@ struct WidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().overlay(Theme.hairline)
-            VStack(alignment: .leading, spacing: 7) {
+            Rectangle().fill(Theme.beam).frame(height: 2)
+            VStack(alignment: .leading, spacing: 8) {
                 if topThree.isEmpty {
-                    Text("今天还没有记录").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(L(.widgetEmpty)).font(Theme.ui(Theme.Size.meta)).foregroundStyle(Theme.muted)
                 } else {
                     ForEach(topThree) { t in todoLine(t) }
                 }
-                Divider().overlay(Theme.hairline).padding(.vertical, 1)
+                Rectangle().fill(Theme.rule).frame(height: 1).padding(.vertical, 2)
                 currentBlockLine
                 footer
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
-        .frame(width: 268)
+        .frame(width: 288)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13))
         .overlay(
             RoundedRectangle(cornerRadius: 13)
-                .strokeBorder(breaker.alertActive ? Theme.warn : Theme.hairline,
+                .strokeBorder(breaker.alertActive ? Theme.mark : Theme.rule,
                               lineWidth: breaker.alertActive ? 2 : 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 13))
         .onTapGesture(perform: onOpenMain)
-        .help("点击打开主窗口")
+        .help(L(.widgetTapHelp))
     }
 
     private var header: some View {
         HStack {
             Text(String(store.record.key.date.dropFirst(5)) + " " +
-                 GongTime.weekdayLabel(dayKey: store.record.key.date))
-                .font(Theme.monoSized(11))
+                 GongTime.weekdayLabel(dayKey: store.record.key.date, lang: UILang.current))
+                .font(Theme.mono(Theme.Size.meta)).monospacedDigit()
+                .foregroundStyle(Theme.ink2)
             Spacer()
             // 溢出时给一个中性的可发现入口，但不显示「还有 N 条」（那是压力，不是信息）
             if hasMore {
-                Text("⋯").font(Theme.monoSized(11)).foregroundStyle(.secondary)
-                    .help("还有更多，点击打开主窗口")
+                Text("⋯").font(Theme.mono(Theme.Size.meta)).foregroundStyle(Theme.muted)
+                    .help(L(.widgetMore))
             }
-            Text("工").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.plan)
+            GongMark(size: 13)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Theme.bandBG)
+        .background(Theme.band)
     }
 
     private func todoLine(_ t: Todo) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text(t.kind.marker)
-                .font(Theme.monoSized(11))
+                .font(Theme.mono(Theme.Size.meta, .medium))
                 .foregroundStyle(t.kind == .floor ? Theme.actual
-                                 : t.kind == .mit ? Theme.warn : Color.secondary)
-                .frame(width: 12)
-            Text(t.text.isEmpty ? "（空）" : t.text)
-                .font(.system(size: 12))
-                .foregroundStyle(t.status == .done ? .secondary : .primary)
-                .strikethrough(t.status == .done, color: .secondary)
+                                 : t.kind == .mit ? Theme.mark : Theme.faint)
+                .frame(width: 13)
+            Text(t.text.isEmpty ? L(.emptyBrackets) : t.text)
+                .font(Theme.ui(Theme.Size.body))
+                .foregroundStyle(t.status == .done ? Theme.muted : Theme.ink)
+                .strikethrough(t.status == .done, color: Theme.faint)
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
@@ -78,12 +79,12 @@ struct WidgetView: View {
         Group {
             if let blk = currentPlanned {
                 Text("\(blk.rangeLabel)　\(blk.title)")
-                    .font(Theme.monoSized(10)).foregroundStyle(Theme.plan).lineLimit(1)
+                    .font(Theme.mono(Theme.Size.label)).foregroundStyle(Theme.plan).lineLimit(1)
             } else if let app = monitor.currentAppName {
-                Text("当前：\(app)")
-                    .font(Theme.monoSized(10)).foregroundStyle(.secondary).lineLimit(1)
+                Text(L(.widgetCurrent, app))
+                    .font(Theme.mono(Theme.Size.label)).foregroundStyle(Theme.muted).lineLimit(1)
             } else {
-                Text("—").font(Theme.monoSized(10)).foregroundStyle(.tertiary)
+                Text("—").font(Theme.mono(Theme.Size.label)).foregroundStyle(Theme.faint)
             }
         }
     }
@@ -99,15 +100,15 @@ struct WidgetView: View {
         HStack(spacing: 12) {
             if let u = store.usage {
                 let totals = UsageReducer.categoryTotals(u, settings: settings.settings)
-                Text("● 专注 \(GongTime.formatDuration(totals[.focus] ?? 0))")
+                Text(L(.widgetFocus, GongTime.formatDuration(totals[.focus] ?? 0)))
                     .foregroundStyle(Theme.actual)
-                Text("○ 其他 \(GongTime.formatDuration(totals[.other] ?? 0))")
-                    .foregroundStyle(Theme.warn)
+                Text(L(.widgetOther, GongTime.formatDuration(totals[.other] ?? 0)))
+                    .foregroundStyle(Theme.mark)
             } else {
-                Text("监控未启用").foregroundStyle(.tertiary)
+                Text(L(.widgetMonitorOff)).foregroundStyle(Theme.faint)
             }
             Spacer(minLength: 0)
         }
-        .font(Theme.monoSized(9))
+        .font(Theme.mono(Theme.Size.label))
     }
 }

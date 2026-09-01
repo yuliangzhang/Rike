@@ -16,13 +16,14 @@ enum TodoKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    var label: String {
+    func label(_ lang: Lang) -> String {
         switch self {
-        case .floor:  return "下限"
-        case .mit:    return "最重要"
+        case .floor:  return S.kindFloor.text(lang)
+        case .mit:    return S.kindMit.text(lang)
         case .normal: return ""
         }
     }
+    @MainActor var label: String { label(UILang.current) }
 }
 
 /// 中性状态。默认 `.notRecorded` —— `false` 读作「失败」，`notRecorded` 读作「事实」。
@@ -32,13 +33,14 @@ enum ItemStatus: String, Codable, Sendable {
     case done
     case skipped
 
-    var label: String {
+    func label(_ lang: Lang) -> String {
         switch self {
-        case .notRecorded: return "未记录"
-        case .done:        return "已完成"
-        case .skipped:     return "已跳过"
+        case .notRecorded: return S.statusNotRecorded.text(lang)
+        case .done:        return S.statusDone.text(lang)
+        case .skipped:     return S.statusSkipped.text(lang)
         }
     }
+    @MainActor var label: String { label(UILang.current) }
 }
 
 enum BlockSource: String, Codable, Sendable {
@@ -60,28 +62,30 @@ enum Trigger: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    var scene: String {
+    func scene(_ lang: Lang) -> String {
         switch self {
-        case .n1: return "卡住了，不知道怎么办"
-        case .n2: return "干完硬活想放松"
-        case .n3: return "随手点开"
-        case .v1: return "想学东西却滑进短视频"
-        case .v2: return "排队等待的空档"
+        case .n1: return S.triggerN1.text(lang)
+        case .n2: return S.triggerN2.text(lang)
+        case .n3: return S.triggerN3.text(lang)
+        case .v1: return S.triggerV1.text(lang)
+        case .v2: return S.triggerV2.text(lang)
         }
     }
+    @MainActor var scene: String { scene(UILang.current) }
 }
 
 /// 应用类别。用「其他」而非「干扰」——中性不评价。
 enum AppCategory: String, Codable, CaseIterable, Sendable {
     case focus, neutral, other
 
-    var label: String {
+    func label(_ lang: Lang) -> String {
         switch self {
-        case .focus:   return "专注"
-        case .neutral: return "中性"
-        case .other:   return "其他"
+        case .focus:   return S.catFocus.text(lang)
+        case .neutral: return S.catNeutral.text(lang)
+        case .other:   return S.catOther.text(lang)
         }
     }
+    @MainActor var label: String { label(UILang.current) }
 }
 
 // MARK: - DayKey：一天的稳定标识（含时区）
@@ -127,7 +131,10 @@ struct DayKey: Codable, Hashable, Sendable {
         return Int((iv.duration / 60).rounded())
     }
 
-    var displayLabel: String { "\(date) \(GongTime.weekdayLabel(dayKey: date))" }
+    func displayLabel(_ lang: Lang) -> String {
+        "\(date) \(GongTime.weekdayLabel(dayKey: date, lang: lang))"
+    }
+    @MainActor var displayLabel: String { displayLabel(UILang.current) }
 }
 
 // MARK: - 核心模型
@@ -177,7 +184,10 @@ struct PlannedBlock: Codable, Identifiable, Hashable, Sendable {
     }
 
     var durationMinutes: Int { endMinute - startMinute }
-    var rangeLabel: String { GongTime.formatRange(startMinute, endMinute) }
+    func rangeLabel(_ lang: Lang) -> String {
+        GongTime.formatRange(startMinute, endMinute, lang: lang)
+    }
+    @MainActor var rangeLabel: String { rangeLabel(UILang.current) }
 }
 
 /// 实际块：**已发生的瞬间**，可逆、可跨时区重算。
@@ -198,13 +208,13 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     /// 否则在珀斯的 09-01 记录里，一条发生在纽约 20:00 的实际块会被显示/导出成
     /// 珀斯的次日 08:00，记录语义就错了。
     /// 当它与记录所在时区不同时，标签里附上时区标识。
-    func rangeLabel(recordTimeZoneIdentifier: String) -> String {
+    func rangeLabel(recordTimeZoneIdentifier: String, lang: Lang) -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         func hm(_ d: Date) -> String {
             String(format: "%02d:%02d", cal.component(.hour, from: d), cal.component(.minute, from: d))
         }
-        let base = "\(hm(start)) 至 \(hm(end))"
+        let base = "\(hm(start)) \(S.rangeSep.text(lang)) \(hm(end))"
         return timeZoneIdentifier == recordTimeZoneIdentifier
             ? base
             : "\(base)（\(timeZoneIdentifier)）"

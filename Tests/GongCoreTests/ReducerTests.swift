@@ -266,7 +266,7 @@ final class UsageTimeZonePropagationTests: XCTestCase {
         let blk = ActualBlock(start: iv.start, end: iv.end,
                               timeZoneIdentifier: iv.timeZoneIdentifier,
                               title: iv.appName, source: .monitor)
-        let label = blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier)
+        let label = blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier, lang: .zh)
         XCTAssertTrue(label.hasPrefix("09:00 至 10:00"),
                       "应显示纽约的 09:00，而不是珀斯的 21:00；实际：\(label)")
         XCTAssertTrue(label.contains("America/New_York"), "跨时区必须标注；实际：\(label)")

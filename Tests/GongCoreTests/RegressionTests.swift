@@ -385,7 +385,7 @@ final class ActualBlockTimeZoneTests: XCTestCase {
         // 珀斯(UTC+8) 2026-09-01 10:00 = 02:00 UTC
         let b = ActualBlock(start: utc2(2026, 9, 1, 2, 0), end: utc2(2026, 9, 1, 3, 0),
                             timeZoneIdentifier: "Australia/Perth", title: "x")
-        XCTAssertEqual(b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth"),
+        XCTAssertEqual(b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth", lang: .zh),
                        "10:00 至 11:00")
     }
 
@@ -395,7 +395,7 @@ final class ActualBlockTimeZoneTests: XCTestCase {
         // 纽约(EDT, UTC-4) 2026-09-01 20:00 = 2026-09-02 00:00 UTC
         let b = ActualBlock(start: utc2(2026, 9, 2, 0, 0), end: utc2(2026, 9, 2, 1, 0),
                             timeZoneIdentifier: "America/New_York", title: "在纽约做的")
-        let label = b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth")
+        let label = b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth", lang: .zh)
         XCTAssertTrue(label.hasPrefix("20:00 至 21:00"),
                       "必须是纽约的 20:00，不是珀斯的 08:00；实际：\(label)")
         XCTAssertTrue(label.contains("America/New_York"),
@@ -424,7 +424,7 @@ final class ActualBlockTimeZoneTests: XCTestCase {
         var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
         rec.actual = [ActualBlock(start: utc2(2026, 9, 2, 0, 0), end: utc2(2026, 9, 2, 1, 0),
                                   timeZoneIdentifier: "America/New_York", title: "越界")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertEqual(p.outOfRange.count, 1)
         XCTAssertTrue(p.outOfRange[0].label.hasPrefix("20:00"),
                       "越界提示也要给纽约的 20:00；实际：\(p.outOfRange[0].label)")

@@ -12,144 +12,154 @@ struct BreakerView: View {
     @State private var newEscaping = ""
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                gauges
-                hardRule
-                procedure
-                timerPanel
-                logPanel
-                triggerTable
-            }
-            .padding(22)
+        ScrollView { pageContent }
+            .background(Theme.inset)
+            .task { await breaker.refreshGauges() }
+    }
+
+    var pageContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            gauges
+            hardRule
+            procedure
+            timerPanel
+            logPanel
+            triggerTable
         }
-        .task { await breaker.refreshGauges() }
+        .padding(24)
     }
 
     private var gauges: some View {
         HStack(spacing: 1) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("上次中断记录").font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-                Text(breaker.lastInterruptionLabel).font(Theme.monoSized(24, weight: .semibold))
+            VStack(alignment: .leading, spacing: 7) {
+                MicroLabel(text: L(.brkLastInterruption))
+                Text(breaker.lastInterruptionLabel)
+                    .font(Theme.mono(Theme.Size.gauge, .semibold)).monospacedDigit()
+                    .foregroundStyle(Theme.ink)
             }
-            .padding(13).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor))
+            .padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("本月最长一次").font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-                Text(breaker.longestThisMonthMinutes.map { "\($0)" } ?? "—")
-                    .font(Theme.monoSized(24, weight: .semibold)).foregroundStyle(Theme.warn)
-                Text("分钟").font(Theme.monoSized(9)).foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 7) {
+                MicroLabel(text: L(.brkLongestThisMonth))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(breaker.longestThisMonthMinutes.map { "\($0)" } ?? "—")
+                        .font(Theme.mono(Theme.Size.gauge, .semibold)).monospacedDigit()
+                        .foregroundStyle(Theme.mark)
+                    Text(L(.brkMinutesUnit))
+                        .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
+                }
             }
-            .padding(13).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor))
+            .padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("只看这两个数").font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-                Text("第二个数在下降就是在赢。这里给的是日期，不是连续天数——连续天数是打卡计数器的变体。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 7) {
+                MicroLabel(text: L(.brkOnlyTwo))
+                Explain(L(.brkOnlyTwoBody))
             }
-            .padding(13).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor))
+            .padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface)
         }
-        .background(Theme.hairline)
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .background(Theme.rule)
+        .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radius).strokeBorder(Theme.rule))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radius))
     }
 
     private var hardRule: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("唯一的硬规则").font(Theme.monoSized(9)).foregroundStyle(Theme.stop).tracking(1)
-            Text("任何一次中断，不许跨过一次睡眠。").font(.system(size: 16, weight: .bold))
-            Text("跨日自动归零，不做连续天数展示——愧疚是 N-1 触发器的燃料。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            MicroLabel(text: L(.brkHardRuleLabel), color: Theme.stop)
+            Text(L(.brkHardRule)).font(Theme.ui(18, .bold)).foregroundStyle(Theme.ink)
+            Explain(L(.brkHardRuleBody))
         }
-        .padding(15)
+        .padding(17)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.stop.opacity(0.07))
+        .background(Theme.stop.opacity(0.09))
         .overlay(alignment: .leading) { Rectangle().fill(Theme.stop).frame(width: 3) }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radius))
     }
 
     private var procedure: some View {
-        panel("30 秒断路程序") {
-            Text("已经开始下滑时，按顺序做，不要先跟自己讲道理。跟渴望辩论必输。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-            ForEach(Array(Self.steps.enumerated()), id: \.offset) { i, s in
-                HStack(alignment: .top, spacing: 11) {
+        Panel(title: L(.brkProcedure)) {
+            Explain(L(.brkProcedureBody))
+            ForEach(Array(Self.steps.enumerated()), id: \.offset) { i, step in
+                HStack(alignment: .top, spacing: 13) {
                     Text(String(format: "%02d", i + 1))
-                        .font(Theme.monoSized(11, weight: .semibold)).foregroundStyle(Theme.stop)
-                        .frame(width: 20, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(s.0).font(.system(size: 12, weight: .medium))
-                        Text(s.1).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .font(Theme.mono(Theme.Size.meta, .semibold)).foregroundStyle(Theme.stop)
+                        .frame(width: 22, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L(step.0)).font(Theme.ui(Theme.Size.body, .medium))
+                            .foregroundStyle(Theme.ink)
+                        Explain(L(step.1))
                     }
                 }
+                .padding(.vertical, 1)
             }
         }
     }
 
-    private static let steps: [(String, String)] = [
-        ("站起来，离开这个房间", "先改变身体状态，不是先改变想法。"),
-        ("手机／平板放到另一个房间", "不是抽屉，是另一个房间。"),
-        ("出门走 10 分钟，或洗把冷水脸、吃点东西", "目标是打断状态，不是说服自己。"),
-        ("写一句：我刚才真正想逃开的是 ___", "把迷雾变成对象。你逃的是无边界，不是难。"),
-        ("做那件事的 5 分钟版本，然后允许自己停", "让开放回路挂回工作上，而不是挂在下一章。")
+    private static let steps: [(S, S)] = [
+        (.brkStep1, .brkStep1Sub),
+        (.brkStep2, .brkStep2Sub),
+        (.brkStep3, .brkStep3Sub),
+        (.brkStep4, .brkStep4Sub),
+        (.brkStep5, .brkStep5Sub)
     ]
 
     private var timerPanel: some View {
-        panel("10 分钟延迟计时器") {
-            HStack(spacing: 20) {
+        Panel(title: L(.brkTimer)) {
+            HStack(alignment: .top, spacing: 22) {
                 Text(breaker.timerLabel)
-                    .font(Theme.monoSized(38, weight: .semibold))
-                    .foregroundStyle(breaker.timerRunning ? Theme.warn
-                                     : breaker.timerRemaining == 0 ? Theme.actual : .primary)
-                    .frame(minWidth: 120, alignment: .leading)
-                Text("想打开的那一刻，先按开始。渴望是一条会自己落下去的曲线，通常十几分钟就过峰。十分钟后你还想看，那就去看——但那时是你在决定。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                VStack(spacing: 6) {
-                    Button(breaker.timerRunning ? "暂停" : "开始") {
+                    .font(Theme.mono(40, .semibold)).monospacedDigit()
+                    .foregroundStyle(breaker.timerRunning ? Theme.mark
+                                     : breaker.timerRemaining == 0 ? Theme.actual : Theme.ink)
+                    .frame(minWidth: 130, alignment: .leading)
+                Explain(L(.brkTimerBody))
+                VStack(spacing: 7) {
+                    Button(breaker.timerRunning ? L(.brkPause) : L(.brkStart)) {
                         breaker.timerRunning ? breaker.pauseTimer() : breaker.startTimer()
                     }
-                    Button("重置") { breaker.resetTimer() }
+                    Button(L(.brkReset)) { breaker.resetTimer() }
                 }
+                .font(Theme.ui(Theme.Size.meta))
             }
         }
     }
 
     private var logPanel: some View {
-        panel("记一笔（中性记录，不写评价）") {
-            HStack(spacing: 10) {
+        Panel(title: L(.brkLog)) {
+            HStack(spacing: 11) {
                 Picker("", selection: $newTrigger) {
                     ForEach(Trigger.allCases, id: \.self) { t in
                         Text("\(t.code) \(t.scene)").tag(t)
                     }
                 }
-                .labelsHidden().frame(width: 260)
+                .labelsHidden().frame(width: 280)
 
-                TextField("分钟", text: $newMinutes)
-                    .frame(width: 60).font(Theme.monoSized(11))
+                TextField(L(.brkMinutesField), text: $newMinutes)
+                    .frame(width: 66).font(Theme.mono(Theme.Size.time))
 
-                TextField("真正想逃开的是…", text: $newEscaping)
-                    .font(.system(size: 12))
+                TextField(L(.brkEscapingPlaceholder), text: $newEscaping)
+                    .font(Theme.ui(Theme.Size.body))
 
-                Button("记录") { logInterruption() }
+                Button(L(.brkRecord)) { logInterruption() }
                     .disabled(Int(newMinutes) == nil)
             }
             if !store.record.breaker.interruptions.isEmpty {
-                Divider().overlay(Theme.hairline)
+                Rectangle().fill(Theme.rule).frame(height: 1)
                 ForEach(store.record.breaker.interruptions) { i in
-                    HStack(spacing: 10) {
-                        Text(i.trigger.code).font(Theme.monoSized(10)).foregroundStyle(Theme.warn)
-                        Text("\(i.minutes) 分钟").font(Theme.monoSized(10)).foregroundStyle(.secondary)
-                        Text(i.escapingFrom).font(.system(size: 11)).foregroundStyle(.secondary)
+                    HStack(spacing: 11) {
+                        Text(i.trigger.code)
+                            .font(Theme.mono(Theme.Size.label, .semibold)).foregroundStyle(Theme.mark)
+                        Text(L(.brkMinutesCount, i.minutes))
+                            .font(Theme.mono(Theme.Size.label)).foregroundStyle(Theme.muted)
+                        Text(i.escapingFrom)
+                            .font(Theme.ui(Theme.Size.meta)).foregroundStyle(Theme.ink2)
                         Spacer()
-                        Button("删除") {
+                        Button(L(.delete)) {
                             store.mutate { $0.breaker.interruptions.removeAll { $0.id == i.id } }
                         }
-                        .buttonStyle(.plain).font(Theme.monoSized(9)).foregroundStyle(.tertiary)
+                        .buttonStyle(.plain).font(Theme.ui(Theme.Size.label))
+                        .foregroundStyle(Theme.faint)
                     }
                 }
             }
@@ -167,32 +177,18 @@ struct BreakerView: View {
     }
 
     private var triggerTable: some View {
-        panel("触发器对照") {
+        Panel(title: L(.brkTriggerTable)) {
             ForEach(Trigger.allCases, id: \.self) { t in
-                HStack(alignment: .top, spacing: 12) {
-                    Text(t.code).font(Theme.monoSized(10, weight: .semibold))
-                        .foregroundStyle(t.rawValue.hasPrefix("n") ? Theme.warn : Theme.actual)
-                        .frame(width: 34, alignment: .leading)
-                    Text(t.scene).font(.system(size: 12))
+                HStack(alignment: .top, spacing: 14) {
+                    Text(t.code).font(Theme.mono(Theme.Size.meta, .semibold))
+                        .foregroundStyle(t.rawValue.hasPrefix("n") ? Theme.mark : Theme.actual)
+                        .frame(width: 38, alignment: .leading)
+                    Text(t.scene).font(Theme.ui(Theme.Size.body)).foregroundStyle(Theme.ink2)
                     Spacer()
                 }
             }
-            Text("V-1 / V-2 可由监控自动检测：「其他」类应用连续前台超过设定阈值时，挂件描边变色并出现非模态提示。绝不使用系统模态弹窗。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Explain(L(.brkTriggerNote))
         }
     }
 
-    @ViewBuilder
-    private func panel<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 13, weight: .bold))
-            content()
-        }
-        .padding(15)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .textBackgroundColor))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-    }
 }

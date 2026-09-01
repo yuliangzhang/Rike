@@ -14,9 +14,9 @@ final class TimeTests: XCTestCase {
 
     func testWeekdayIsComputedNotHardcoded() {
         // codex r1 抓到的错误：设计稿把 2026-08-31 写成了周五。
-        XCTAssertEqual(GongTime.weekdayLabel(dayKey: "2026-08-31"), "周一")
-        XCTAssertEqual(GongTime.weekdayLabel(dayKey: "2026-09-06"), "周日")
-        XCTAssertEqual(GongTime.displayDate(dayKey: "2026-08-31"), "2026-08-31 周一")
+        XCTAssertEqual(GongTime.weekdayLabel(dayKey: "2026-08-31", lang: .zh), "周一")
+        XCTAssertEqual(GongTime.weekdayLabel(dayKey: "2026-09-06", lang: .zh), "周日")
+        XCTAssertEqual(GongTime.displayDate(dayKey: "2026-08-31", lang: .zh), "2026-08-31 周一")
     }
 
     func testParseMinutesLenient() {
@@ -38,7 +38,7 @@ final class TimeTests: XCTestCase {
     func testFormatting() {
         XCTAssertEqual(GongTime.formatMinutes(540), "09:00")
         XCTAssertEqual(GongTime.formatMinutes(1440), "24:00")
-        XCTAssertEqual(GongTime.formatRange(480, 570), "08:00 至 09:30")
+        XCTAssertEqual(GongTime.formatRange(480, 570, lang: .zh), "08:00 至 09:30")
         XCTAssertEqual(GongTime.formatDuration(9240), "2h 34m")
         XCTAssertEqual(GongTime.formatDuration(1800), "30m")
         XCTAssertEqual(GongTime.formatDuration(45), "45s")
@@ -82,7 +82,7 @@ final class ProjectionTests: XCTestCase {
     func testAxisLengthMatchesRealDayLength() {
         var rec = DayRecord(key: DayKey(date: "2026-03-08", timeZoneIdentifier: ny))
         rec.planned = [PlannedBlock(start: 9 * 60, end: 10 * 60, title: "晨会")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertEqual(p.axisLength, 1380, accuracy: 0.5)
         XCTAssertEqual(p.ticks.count, 23)                  // 春令时只有 23 个整点
     }
@@ -93,7 +93,7 @@ final class ProjectionTests: XCTestCase {
             PlannedBlock(start: 2 * 60 + 30, end: 2 * 60 + 45, title: "不存在的时刻"),
             PlannedBlock(start: 9 * 60, end: 10 * 60, title: "正常")
         ]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         let gap = p.planned.first { $0.title == "不存在的时刻" }
         let ok  = p.planned.first { $0.title == "正常" }
         XCTAssertEqual(gap?.wallClockNonexistent, true, "春令时被跳过的墙钟时间必须被标记")
@@ -112,7 +112,7 @@ final class ProjectionTests: XCTestCase {
             ActualBlock(start: first,  end: first.addingTimeInterval(600),  title: "第一次"),
             ActualBlock(start: second, end: second.addingTimeInterval(600), title: "第二次")
         ]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         let a = p.actual.first { $0.title == "第一次" }
         let b = p.actual.first { $0.title == "第二次" }
         XCTAssertEqual(a?.startOffset ?? -1, 90,  accuracy: 0.5)
@@ -128,7 +128,7 @@ final class ProjectionTests: XCTestCase {
         rec.actual = [ActualBlock(start: utc(2026, 8, 31, 15, 50),
                                   end:   utc(2026, 8, 31, 16, 20),
                                   title: "跨零点")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertEqual(p.actual.count, 1)
         let seg = p.actual[0]
         XCTAssertTrue(seg.clippedStart, "延续自前一天的段必须标记裁剪")
@@ -143,7 +143,7 @@ final class ProjectionTests: XCTestCase {
         rec.actual = [ActualBlock(start: utc(2026, 8, 1, 0, 0),
                                   end:   utc(2026, 8, 1, 1, 0),
                                   timeZoneIdentifier: "America/New_York", title: "别的日子")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertTrue(p.actual.isEmpty, "画不到轴上")
         XCTAssertEqual(p.outOfRange.count, 1, "但必须出现在 outOfRange 里")
         XCTAssertEqual(p.outOfRange.first?.title, "别的日子")
@@ -159,7 +159,7 @@ final class ProjectionTests: XCTestCase {
         let nyEvening = utc(2026, 9, 2, 0, 0)
         rec.actual = [ActualBlock(start: nyEvening, end: nyEvening.addingTimeInterval(3600),
                                   timeZoneIdentifier: "America/New_York", title: "在纽约记的")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertTrue(p.actual.isEmpty)
         XCTAssertEqual(p.outOfRange.count, 1, "跨时区越界的记录必须被明确告知，不能静默隐藏")
     }
@@ -168,7 +168,7 @@ final class ProjectionTests: XCTestCase {
         var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
         let t = utc(2026, 9, 1, 2, 0)     // 珀斯 10:00
         rec.actual = [ActualBlock(start: t, end: t.addingTimeInterval(3600), title: "正常")]
-        let p = DayTimelineProjection.project(record: rec)
+        let p = DayTimelineProjection.project(record: rec, lang: .zh)
         XCTAssertEqual(p.actual.count, 1)
         XCTAssertTrue(p.outOfRange.isEmpty, "常态下不应有越界提示")
     }
@@ -176,9 +176,9 @@ final class ProjectionTests: XCTestCase {
     func testNowOffsetOnlyWithinDay() {
         let rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
         // 2026-09-01 10:00 Perth = 02:00 UTC
-        let inside = DayTimelineProjection.project(record: rec, now: utc(2026, 9, 1, 2, 0))
+        let inside = DayTimelineProjection.project(record: rec, now: utc(2026, 9, 1, 2, 0), lang: .zh)
         XCTAssertEqual(inside.nowOffset ?? -1, 600, accuracy: 0.5)
-        let outside = DayTimelineProjection.project(record: rec, now: utc(2026, 9, 9, 2, 0))
+        let outside = DayTimelineProjection.project(record: rec, now: utc(2026, 9, 9, 2, 0), lang: .zh)
         XCTAssertNil(outside.nowOffset)
     }
 }
@@ -199,7 +199,7 @@ final class ModelInvariantTests: XCTestCase {
 
         let full = PlannedBlock(start: 22 * 60, end: 24 * 60, title: "到午夜")
         XCTAssertEqual(full.endMinute, 1440)
-        XCTAssertEqual(full.rangeLabel, "22:00 至 24:00")
+        XCTAssertEqual(full.rangeLabel(.zh), "22:00 至 24:00")
     }
 
     func testFloorAndMitAreUnique() {

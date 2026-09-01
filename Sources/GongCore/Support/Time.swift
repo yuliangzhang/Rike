@@ -52,22 +52,24 @@ enum GongTime {
 
     // MARK: 星期
 
-    private static let weekdayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+    private static let weekdayNamesZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+    private static let weekdayNamesEN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-    /// 由 Calendar 计算，绝不硬编码。2026-08-31 → 周一
-    static func weekdayLabel(_ date: Date) -> String {
+    /// 由 Calendar 计算，绝不硬编码。2026-08-31 → 周一 / Mon
+    static func weekdayLabel(_ date: Date, lang: Lang) -> String {
         let w = calendar.component(.weekday, from: date)   // 1 = Sunday
-        return weekdayNames[(w - 1 + 7) % 7]
+        let idx = (w - 1 + 7) % 7
+        return lang == .zh ? weekdayNamesZH[idx] : weekdayNamesEN[idx]
     }
 
-    static func weekdayLabel(dayKey: String) -> String {
+    static func weekdayLabel(dayKey: String, lang: Lang) -> String {
         guard let d = date(fromDayKey: dayKey) else { return "" }
-        return weekdayLabel(d)
+        return weekdayLabel(d, lang: lang)
     }
 
-    /// "2026-08-31 周一"
-    static func displayDate(dayKey: String) -> String {
-        "\(dayKey) \(weekdayLabel(dayKey: dayKey))"
+    /// "2026-08-31 周一" / "2026-08-31 Mon"
+    static func displayDate(dayKey: String, lang: Lang) -> String {
+        "\(dayKey) \(weekdayLabel(dayKey: dayKey, lang: lang))"
     }
 
     // MARK: 当日分钟 ⇄ 文本
@@ -107,9 +109,9 @@ enum GongTime {
         return String(format: "%02d:%02d", clamped / 60, clamped % 60)
     }
 
-    /// "09:00 至 10:30"
-    static func formatRange(_ start: Int, _ end: Int) -> String {
-        "\(formatMinutes(start)) 至 \(formatMinutes(end))"
+    /// "09:00 至 10:30" / "09:00 – 10:30"
+    static func formatRange(_ start: Int, _ end: Int, lang: Lang) -> String {
+        "\(formatMinutes(start)) \(S.rangeSep.text(lang)) \(formatMinutes(end))"
     }
 
     // MARK: 时长

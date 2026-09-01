@@ -73,7 +73,7 @@ struct DayProjection: Hashable, Sendable {
 /// 春令时被跳过的墙钟时间标记 `wallClockNonexistent`，仍然绘制（意图是真实存在的）。
 enum DayTimelineProjection {
 
-    static func project(record: DayRecord, now: Date? = nil) -> DayProjection {
+    static func project(record: DayRecord, now: Date? = nil, lang: Lang) -> DayProjection {
         let key = record.key
         guard let dayInterval = key.dayInterval else {
             return DayProjection(axisLength: 1440, ticks: [], planned: [], actual: [], nowOffset: nil)
@@ -109,7 +109,7 @@ enum DayTimelineProjection {
                 endOffset: max(s, e),
                 title: blk.title,
                 wallClockNonexistent: !(sExists && eExists),
-                label: blk.rangeLabel
+                label: blk.rangeLabel(lang)
             )
         }
 
@@ -125,8 +125,9 @@ enum DayTimelineProjection {
                 _ = ownCal
                 outOfRange.append(OutOfRangeBlock(
                     id: blk.id,
-                    title: blk.title.isEmpty ? "（无标题）" : blk.title,
-                    label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier),
+                    title: blk.title.isEmpty ? S.untitled.text(lang) : blk.title,
+                    label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier,
+                                          lang: lang),
                     timeZoneIdentifier: blk.timeZoneIdentifier))
                 return nil
             }
@@ -145,7 +146,8 @@ enum DayTimelineProjection {
                 title: blk.title,
                 clippedStart: cs,
                 clippedEnd: ce,
-                label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier)
+                label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier,
+                                      lang: lang)
             )
         }
 
@@ -190,12 +192,4 @@ enum DayTimelineProjection {
         return (min(max(0, offset), axisLength), exists)
     }
 
-    private static func wallClockLabel(_ start: Date, _ end: Date, calendar: Calendar) -> String {
-        func f(_ d: Date) -> String {
-            String(format: "%02d:%02d",
-                   calendar.component(.hour, from: d),
-                   calendar.component(.minute, from: d))
-        }
-        return "\(f(start)) 至 \(f(end))"
-    }
 }

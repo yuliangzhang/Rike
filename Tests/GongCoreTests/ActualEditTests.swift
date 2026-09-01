@@ -105,7 +105,7 @@ final class ActualBlockWallClockEditTests: XCTestCase {
         b.setStartWallClock(9 * 60)
         XCTAssertEqual(b.startWallClockMinutes, 9 * 60)
         // 结束仍是纽约 21:00：改开始不连带改结束，两个框显示的都是真实存储值。
-        XCTAssertEqual(b.rangeLabel(recordTimeZoneIdentifier: perth),
+        XCTAssertEqual(b.rangeLabel(recordTimeZoneIdentifier: perth, lang: .zh),
                        "09:00 至 21:00（America/New_York）")
 
         // 同一瞬间在珀斯是 21:00 —— 证明我们没有用记录时区去解释

@@ -16,10 +16,13 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency")
             ]
         ),
+        // 可执行入口。产品对外叫「日课 / Rike」；**内部标识仍是 gong**
+        // （bundle id、数据目录、导出文件里的 marker），改了会让既有数据与
+        // 已导出文件失联，所以只改人看得见的名字。
         .executableTarget(
-            name: "Gong",
+            name: "Rike",
             dependencies: ["GongCore"],
-            path: "Sources/Gong",
+            path: "Sources/Rike",
             swiftSettings: [
                 .swiftLanguageMode(.v5),
                 .enableUpcomingFeature("StrictConcurrency")

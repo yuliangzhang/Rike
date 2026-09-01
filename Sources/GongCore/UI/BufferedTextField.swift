@@ -16,7 +16,7 @@ struct BufferedTextField: View {
     let contextID: String
     var placeholder: String = ""
     let value: String
-    var font: Font = .system(size: 12)
+    var font: Font = Theme.ui(Theme.Size.body)
     let onChange: (String) -> Void
 
     @State private var text: String = ""
@@ -72,7 +72,10 @@ struct BufferedTextEditor: View {
     let contextID: String
     let value: String
     var hint: String = ""
-    var minHeight: CGFloat = 44
+    var minHeight: CGFloat = 56
+    /// 手记区用衬线；仪表区用无衬线。由调用方决定。
+    var font: Font = Theme.ui(Theme.Size.body)
+    var lineSpacing: CGFloat = 2
     let onChange: (String) -> Void
 
     @State private var text: String = ""
@@ -81,18 +84,21 @@ struct BufferedTextEditor: View {
 
     var body: some View {
         TextEditor(text: $text)
-            .font(.system(size: 12))
+            .font(font)
+            .lineSpacing(lineSpacing)
+            .foregroundStyle(Theme.ink2)
             .frame(minHeight: minHeight)
             .scrollContentBackground(.hidden)
             .focused($focused)
-            .padding(6)
-            .background(Color.primary.opacity(0.035))
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.hairline))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .padding(8)
+            .background(Theme.inset)
+            .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall)
+                        .strokeBorder(focused ? Theme.plan.opacity(0.5) : Theme.rule))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
             .overlay(alignment: .topLeading) {
                 if text.isEmpty {
-                    Text(hint).font(.system(size: 12)).foregroundStyle(.tertiary)
-                        .padding(.horizontal, 11).padding(.vertical, 12)
+                    Text(hint).font(font).foregroundStyle(Theme.faint)
+                        .padding(.horizontal, 13).padding(.vertical, 14)
                         .allowsHitTesting(false)
                 }
             }

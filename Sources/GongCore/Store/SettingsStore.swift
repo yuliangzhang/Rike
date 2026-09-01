@@ -21,6 +21,8 @@ final class SettingsStore: ObservableObject {
         } catch {
             // 读取失败就用默认值，不阻塞启动
         }
+        // 语言必须在任何界面构建之前生效，否则第一帧会是错的语言
+        UILang.set(settings.language)
     }
 
     private func scheduleSave() {

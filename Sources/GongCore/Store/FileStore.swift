@@ -10,11 +10,11 @@ enum FileStoreError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .writeFailed(let p):            return "写入失败：\(p)"
-        case .renameFailed(let p, let e):     return "原子替换失败：\(p)（errno \(e)）"
-        case .openFailed(let p, let e):       return "打开失败：\(p)（errno \(e)）"
-        case .syncFailed(let p, let e):       return "落盘同步失败：\(p)（errno \(e)）"
-        case .lockFailed(let p):              return "无法获得文件锁：\(p)"
+        case .writeFailed(let p):            return "write failed: \(p)"
+        case .renameFailed(let p, let e):     return "atomic replace failed: \(p) (errno \(e))"
+        case .openFailed(let p, let e):       return "open failed: \(p) (errno \(e))"
+        case .syncFailed(let p, let e):       return "fsync failed: \(p) (errno \(e))"
+        case .lockFailed(let p):              return "could not acquire file lock: \(p)"
         }
     }
 }

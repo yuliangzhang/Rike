@@ -59,7 +59,7 @@ actor Exporter {
         do {
             try await store.ensureDirectory(dir)
         } catch {
-            return (.failed("无法创建导出目录：\(dir.path)——\(error.localizedDescription)"), nil)
+            return (.failed("cannot create export directory: \(dir.path) — \(error.localizedDescription)"), nil)
         }
 
         // 1) 目标不存在 → 独占创建
@@ -69,7 +69,7 @@ actor Exporter {
                         ExportState(path: target.path, contentHash: newHash, exportedAt: Date()))
             }
         } catch {
-            return (.failed("创建失败：\(error.localizedDescription)"), nil)
+            return (.failed("create failed: \(error.localizedDescription)"), nil)
         }
 
         // 2) 目标已存在 → 在目录锁内校验 + 写入，并在 rename 前再复核一次
@@ -131,10 +131,10 @@ actor Exporter {
                 }
                 return (.updated(u), state)
             default:
-                return (.failed("导出状态异常"), nil)
+                return (.failed("inconsistent export state"), nil)
             }
         } catch {
-            return (.failed("导出失败：\(error.localizedDescription)"), nil)
+            return (.failed("export failed: \(error.localizedDescription)"), nil)
         }
     }
 
@@ -152,9 +152,9 @@ actor Exporter {
                     return (.conflict(url), nil)
                 }
             } catch {
-                return (.failed("冲突文件写入失败：\(error.localizedDescription)"), nil)
+                return (.failed("conflict file write failed: \(error.localizedDescription)"), nil)
             }
         }
-        return (.failed("冲突文件过多（已有 100 个），请先清理导出目录"), nil)
+        return (.failed("too many conflict files (100 already); clean up the export folder first"), nil)
     }
 }

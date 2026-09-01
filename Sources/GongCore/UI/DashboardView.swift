@@ -18,8 +18,9 @@ struct DashboardView: View {
                 weekChart
                 limitationNote
             }
-            .padding(22)
+            .padding(24)
         }
+        .background(Theme.inset)
         .task(id: store.record.date) { await loadWeek() }
     }
 
@@ -27,114 +28,94 @@ struct DashboardView: View {
         let totals = usage.map { UsageReducer.categoryTotals($0, settings: settings.settings) } ?? [:]
         let total = usage?.totalSeconds ?? 0
         return HStack(spacing: 1) {
-            gauge("今日在机时长", GongTime.formatDuration(total), nil)
-            gauge("专注", GongTime.formatDuration(totals[.focus] ?? 0), Theme.actual)
-            gauge("中性", GongTime.formatDuration(totals[.neutral] ?? 0), Theme.plan)
-            gauge("其他", GongTime.formatDuration(totals[.other] ?? 0), Theme.warn)
+            gauge(L(.dashTimeAtComputer), GongTime.formatDuration(total), nil)
+            gauge(L(.catFocus), GongTime.formatDuration(totals[.focus] ?? 0), Theme.actual)
+            gauge(L(.catNeutral), GongTime.formatDuration(totals[.neutral] ?? 0), Theme.plan)
+            gauge(L(.catOther), GongTime.formatDuration(totals[.other] ?? 0), Theme.mark)
         }
-        .background(Theme.hairline)
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .background(Theme.rule)
+        .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radius).strokeBorder(Theme.rule))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radius))
     }
 
     private func gauge(_ label: String, _ value: String, _ color: Color?) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-            Text(value).font(Theme.monoSized(19, weight: .semibold))
-                .foregroundStyle(color ?? .primary)
+        VStack(alignment: .leading, spacing: 7) {
+            MicroLabel(text: label)
+            Text(value).font(Theme.mono(Theme.Size.gauge, .semibold)).monospacedDigit()
+                .foregroundStyle(color ?? Theme.ink)
         }
-        .padding(13)
+        .padding(15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Theme.surface)
     }
 
     private var todayByApp: some View {
-        panel("今日各应用时长") {
+        Panel(title: L(.dashByApp)) {
             if let u = usage, !u.intervals.isEmpty {
                 let rows = Array(u.totals().prefix(10))
                 Chart(rows, id: \.bundleId) { row in
                     BarMark(
-                        x: .value("时长", row.seconds / 60),
-                        y: .value("应用", row.name)
+                        x: .value(L(.axisDuration), row.seconds / 60),
+                        y: .value(L(.axisApp), row.name)
                     )
                     .foregroundStyle(Theme.categoryColor(settings.settings.category(for: row.bundleId)))
                 }
-                .chartXAxisLabel("分钟")
-                .frame(height: CGFloat(max(120, rows.count * 26)))
+                .chartXAxisLabel(L(.axisMinutes))
+                .frame(height: CGFloat(max(130, rows.count * 28)))
 
                 HStack(spacing: 16) {
-                    legend("专注", Theme.actual)
-                    legend("中性", Theme.plan)
-                    legend("其他", Theme.warn)
+                    legend(L(.catFocus), Theme.actual)
+                    legend(L(.catNeutral), Theme.plan)
+                    legend(L(.catOther), Theme.mark)
                     Spacer()
-                    Text("类别可在「设置」中逐个应用修改")
-                        .font(Theme.monoSized(9)).foregroundStyle(.tertiary)
+                    Text(L(.dashCategoryHint))
+                        .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
                 }
             } else {
-                Text("今天还没有监控数据。").font(.system(size: 12)).foregroundStyle(.secondary)
+                Explain(L(.dashNoData))
             }
             if usage?.truncated == true {
-                Text("注：上次退出未正常结束，最后一段按最后心跳截断，可能少计几十秒。")
-                    .font(Theme.monoSized(9)).foregroundStyle(Theme.warn)
+                Explain(L(.dashTruncated), color: Theme.mark)
             }
         }
     }
 
     private var weekChart: some View {
-        panel("近 7 天") {
+        Panel(title: L(.dashWeek)) {
             if weekDays.isEmpty {
-                Text("暂无数据。").font(.system(size: 12)).foregroundStyle(.secondary)
+                Explain(L(.dashNoWeekData))
             } else {
                 Chart(weekDays, id: \.day) { d in
-                    BarMark(x: .value("日期", String(d.day.dropFirst(5))),
-                            y: .value("小时", d.seconds / 3600))
-                        .foregroundStyle(Theme.plan.opacity(0.45))
-                    BarMark(x: .value("日期", String(d.day.dropFirst(5))),
-                            y: .value("专注小时", d.focus / 3600))
+                    BarMark(x: .value(L(.axisDate), String(d.day.dropFirst(5))),
+                            y: .value(L(.axisHours), d.seconds / 3600))
+                        .foregroundStyle(Theme.plan.opacity(0.4))
+                    BarMark(x: .value(L(.axisDate), String(d.day.dropFirst(5))),
+                            y: .value(L(.axisFocusHours), d.focus / 3600))
                         .foregroundStyle(Theme.actual)
                 }
-                .chartYAxisLabel("小时")
-                .frame(height: 180)
-                Text("深色为专注时长，浅色为在机总时长。")
-                    .font(Theme.monoSized(9)).foregroundStyle(.tertiary)
+                .chartYAxisLabel(L(.axisHours))
+                .frame(height: 190)
+                Explain(L(.dashWeekLegend))
             }
         }
     }
 
     private var limitationNote: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("关于统计口径").font(Theme.monoSized(9)).foregroundStyle(.tertiary).tracking(1)
-            Text("""
-            Claude Code 运行在 Terminal / iTerm 里，系统层面看到的是宿主应用，因此统计为 Terminal。\
-            要区分需要辅助功能权限读取窗口标题，本版本不做，也不会请求该权限。\
-            前台应用统计与空闲检测均不需要任何系统权限。
-            """)
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 7) {
+            MicroLabel(text: L(.dashScopeTitle))
+            Explain(L(.dashScopeBody))
         }
-        .padding(13)
+        .padding(15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.bandBG)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .background(Theme.band)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radius))
     }
 
     private func legend(_ t: String, _ c: Color) -> some View {
         HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 9, height: 9)
-            Text(t).font(Theme.monoSized(9)).foregroundStyle(.secondary)
+            RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 10, height: 10)
+            Text(t).font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.muted)
         }
-    }
-
-    @ViewBuilder
-    private func panel<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 13, weight: .bold))
-            content()
-        }
-        .padding(15)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .textBackgroundColor))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
     }
 
     private func loadWeek() async {

@@ -4,12 +4,13 @@ enum WidgetMode: String, Codable, CaseIterable, Sendable {
     case desktop    // 桌面层：像原生 widget，不挡工作窗口（默认）
     case floating   // 置顶：始终可见
 
-    var label: String {
+    func label(_ lang: Lang) -> String {
         switch self {
-        case .desktop:  return "桌面层（不挡窗口）"
-        case .floating: return "置顶（始终可见）"
+        case .desktop:  return S.widgetModeDesktop.text(lang)
+        case .floating: return S.widgetModeFloating.text(lang)
         }
     }
+    @MainActor var label: String { label(UILang.current) }
 }
 
 struct AppSettings: Codable, Sendable, Hashable {
@@ -43,6 +44,16 @@ struct AppSettings: Codable, Sendable, Hashable {
     var categories: [String: AppCategory] = [:]
 
     var launchAtLogin: Bool = false
+
+    // 外观与语言
+    /// 界面语言。**导出的 markdown 也跟着它走**（用户明确选择）。
+    ///
+    /// 默认 `.zh` 而不是 `.system`：这台机器的系统语言是 en-AU，但这个 app 的
+    /// 全部内容、既有记录和已导出的 markdown 都是中文。默认跟随系统会让升级后
+    /// 界面突然变成英文——把现有用户的语言当作升级副作用改掉，是更让人意外的那个选项。
+    /// 想跟随系统或用英文，在设置里选即可。
+    var language: LangPreference = .zh
+    var appearance: AppearancePreference = .system
 
     struct WidgetFrame: Codable, Sendable, Hashable {
         var x: Double, y: Double, width: Double, height: Double
