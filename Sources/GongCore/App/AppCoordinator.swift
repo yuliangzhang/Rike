@@ -113,9 +113,43 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     // MARK: - 菜单栏
 
+    /// 菜单栏的标记。
+    ///
+    /// 原来直接写汉字 `"工"`。codex 审查把它当成「漏翻的中文」提出来——
+    /// 它其实是 logo 字形而不是文案，但争论这一点没意义：画成图就没有语言问题了，
+    /// 而且能和应用图标**严格同形**（同一套比例），比一个碰巧长得像的汉字更准。
+    ///
+    /// 用 template 图，由系统按浅色/深色菜单栏自动上色。
+    /// 比例走图标的小尺寸那一套：大图 15/128 的横梁在菜单栏高度下只剩 2pt，会糊。
+    private static func statusMark(alert: Bool) -> NSImage {
+        let h: CGFloat = 16, w: CGFloat = alert ? 21 : 16
+        let img = NSImage(size: NSSize(width: w, height: h))
+        img.lockFocus()
+        NSColor.black.setFill()
+        let u = h
+        func bar(_ x: CGFloat, _ yFromTop: CGFloat, _ bw: CGFloat, _ bh: CGFloat) {
+            // 对齐整像素：菜单栏高度下半像素边会被抹成灰边
+            NSRect(x: (x * u).rounded(), y: ((1 - yFromTop - bh) * u).rounded(),
+                   width: (bw * u).rounded(), height: max(1, (bh * u).rounded())).fill()
+        }
+        let barH: CGFloat = 0.16, topY: CGFloat = 0.17
+        let botY = 1 - topY - barH
+        bar((1 - 0.16) / 2, topY, 0.16, botY + barH - topY)   // 腹板先画，横梁盖上去
+        bar(0.14, topY, 0.72, barH)
+        bar(0.14, botY, 0.72, barH)
+        if alert {
+            // 中性提示点，不用颜色也不用感叹号——不评价
+            NSBezierPath(ovalIn: NSRect(x: h + 1, y: h / 2 - 2, width: 4, height: 4)).fill()
+        }
+        img.unlockFocus()
+        img.isTemplate = true
+        return img
+    }
+
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "工"
+        item.button?.image = Self.statusMark(alert: false)
+        item.button?.imagePosition = .imageOnly
         let menu = NSMenu()
         menu.addItem(withTitle: L(.menuOpenMain), action: #selector(openMain), keyEquivalent: "")
             .target = self
@@ -159,7 +193,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     }
 
     private func updateStatusItemTitle() {
-        statusItem?.button?.title = breaker.alertActive ? "工•" : "工"
+        statusItem?.button?.image = Self.statusMark(alert: breaker.alertActive)
     }
 
     @objc private func openMain() { showMainWindow() }

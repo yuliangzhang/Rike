@@ -264,8 +264,15 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     /// 只有当新的开始越过了原结束时才整块平移，保住原时长。
     /// 这里**不能**套用「结束顺延到次日」的规则——那会把 10:00–11:00 改成
     /// 14:00 时凭空造出一个二十一小时的块，显然不是人改开始时间时的意思。
+    ///
+    /// 开始一律夹到 `0..<1440`。`GongTime.parseMinutes` 会接受 24:00（=1440），
+    /// 但 24:00 作为**开始**没有意义——那一天已经结束了。放行的话
+    /// `comps.hour = 24` 会被 Calendar 滚到次日 00:00，整块静默跳到另一天。
+    /// 这也与 `PlannedBlock.clamp` 的不对称约定保持一致：开始 `0..<1440`、
+    /// 结束 `(start, 1440]`，两列的行为必须是同一套。
     mutating func setStartWallClock(_ minutes: Int) {
-        guard let s = instant(wallClockMinutes: minutes, anchoredOn: start) else { return }
+        let m = min(max(0, minutes), PlannedBlock.dayMinutes - 1)
+        guard let s = instant(wallClockMinutes: m, anchoredOn: start) else { return }
         let duration = durationSeconds
         start = s
         if end <= start { end = start.addingTimeInterval(max(60, duration)) }

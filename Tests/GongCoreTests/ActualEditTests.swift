@@ -168,3 +168,45 @@ final class ActualBlockWallClockEditTests: XCTestCase {
         XCTAssertEqual(rec.actual.map(\.startWallClockMinutes), [14 * 60, 16 * 60], "应重新按开始排序")
     }
 }
+
+// MARK: - codex r6 的发现：24:00 作为「开始」
+
+extension ActualBlockWallClockEditTests {
+
+    /// `GongTime.parseMinutes` 接受 24:00（=1440）。作为**结束**它有意义（当天末尾），
+    /// 作为**开始**没有意义——那一天已经结束了。
+    ///
+    /// 修复前：1440 → `comps.hour = 24` → Calendar 滚到次日 00:00，
+    /// 整块静默跳到另一天，然后只在「越界记录」提示里出现。
+    /// 与计划列的行为也不一致（`PlannedBlock.clamp` 把开始夹在 `0..<1440`）。
+    func testStartAt2400IsClampedAndBlockStaysOnSameDay() {
+        var b = block(10, 0, 11, 0)
+        let originalDay = Calendar(identifier: .gregorian).dateComponents(
+            in: TimeZone(identifier: perth)!, from: b.start).day
+
+        b.setStartWallClock(24 * 60)
+
+        XCTAssertEqual(b.startWallClockMinutes, 23 * 60 + 59, "24:00 应被夹到 23:59")
+        let newDay = Calendar(identifier: .gregorian).dateComponents(
+            in: TimeZone(identifier: perth)!, from: b.start).day
+        XCTAssertEqual(newDay, originalDay, "块不该跳到次日")
+        XCTAssertGreaterThan(b.end, b.start)
+    }
+
+    /// 结束仍然允许 24:00 —— 那是「干到当天末尾」，是真实意图。
+    func testEndAt2400IsAllowedAndMeansEndOfDay() {
+        var b = block(22, 0, 23, 0)
+        b.setEndWallClock(24 * 60)
+        XCTAssertEqual(b.durationSeconds, 2 * 3600, accuracy: 1, "22:00 到 24:00 应为 2 小时")
+    }
+
+    /// 与计划列同一套约定：开始 0..<1440，结束 (start, 1440]。
+    func testStartClampMatchesPlannedBlockConvention() {
+        let (ps, _) = PlannedBlock.clamp(start: 24 * 60, end: 24 * 60)
+        XCTAssertEqual(ps, 24 * 60 - 1)
+
+        var b = block(10, 0, 11, 0)
+        b.setStartWallClock(24 * 60)
+        XCTAssertEqual(b.startWallClockMinutes, ps, "实际列的开始夹取必须和计划列一致")
+    }
+}
