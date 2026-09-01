@@ -122,10 +122,11 @@ enum DayTimelineProjection {
                 // 完全在当日投影之外 —— 记下来，不静默丢弃
                 var ownCal = Calendar(identifier: .gregorian)
                 ownCal.timeZone = blk.timeZone
+                _ = ownCal
                 outOfRange.append(OutOfRangeBlock(
                     id: blk.id,
                     title: blk.title.isEmpty ? "（无标题）" : blk.title,
-                    label: wallClockLabel(blk.start, blk.end, calendar: ownCal),
+                    label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier),
                     timeZoneIdentifier: blk.timeZoneIdentifier))
                 return nil
             }
@@ -144,7 +145,7 @@ enum DayTimelineProjection {
                 title: blk.title,
                 clippedStart: cs,
                 clippedEnd: ce,
-                label: wallClockLabel(blk.start, blk.end, calendar: cal)
+                label: blk.rangeLabel(recordTimeZoneIdentifier: key.timeZoneIdentifier)
             )
         }
 

@@ -281,14 +281,8 @@ actor FileStore {
             try? fm.removeItem(at: tmp)
             throw FileStoreError.renameFailed(url.path, errno: e)
         }
-        let fd = open(dir.path, O_RDONLY)
-        if fd >= 0 {
-            let ok = fsync(fd) == 0
-            close(fd)
-            if !ok { throw FileStoreError.syncFailed(dir.path, errno: errno) }
-        } else {
-            throw FileStoreError.openFailed(dir.path, errno: errno)
-        }
+        // 与异步写路径保持一致：fsync 与 close 的失败都要抛出
+        try syncDirectorySync(dir)
     }
 
     /// 两阶段原子写 · 阶段一：把内容写进同目录临时文件并 fsync。

@@ -370,3 +370,63 @@ final class BufferContextTests: XCTestCase {
         XCTAssertNotEqual(ctx("2026-09-01", "planned", a), ctx("2026-09-01", "actual", a))
     }
 }
+
+/// 第四轮代码审查的回归测试。
+final class ActualBlockTimeZoneTests: XCTestCase {
+
+    private func utc2(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ mi: Int) -> Date {
+        var c = DateComponents(); c.year = y; c.month = mo; c.day = d; c.hour = h; c.minute = mi
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal.date(from: c)!
+    }
+
+    /// 同时区：只给墙钟，不加时区后缀。
+    func testSameTimeZoneRendersPlainWallClock() {
+        // 珀斯(UTC+8) 2026-09-01 10:00 = 02:00 UTC
+        let b = ActualBlock(start: utc2(2026, 9, 1, 2, 0), end: utc2(2026, 9, 1, 3, 0),
+                            timeZoneIdentifier: "Australia/Perth", title: "x")
+        XCTAssertEqual(b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth"),
+                       "10:00 至 11:00")
+    }
+
+    /// 跨时区：必须按**块自身**时区渲染，并带上时区标识。
+    /// 修复前用记录的时区渲染，纽约 20:00 会被显示成珀斯的次日 08:00 —— 语义就错了。
+    func testCrossTimeZoneRendersInOwnZoneWithSuffix() {
+        // 纽约(EDT, UTC-4) 2026-09-01 20:00 = 2026-09-02 00:00 UTC
+        let b = ActualBlock(start: utc2(2026, 9, 2, 0, 0), end: utc2(2026, 9, 2, 1, 0),
+                            timeZoneIdentifier: "America/New_York", title: "在纽约做的")
+        let label = b.rangeLabel(recordTimeZoneIdentifier: "Australia/Perth")
+        XCTAssertTrue(label.hasPrefix("20:00 至 21:00"),
+                      "必须是纽约的 20:00，不是珀斯的 08:00；实际：\(label)")
+        XCTAssertTrue(label.contains("America/New_York"),
+                      "跨时区必须标出是哪个时区；实际：\(label)")
+    }
+
+    /// 导出的 Markdown 同样不能用记录时区去渲染跨时区的块。
+    func testMarkdownExportsCrossTimeZoneCorrectly() {
+        var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
+        rec.actual = [
+            ActualBlock(start: utc2(2026, 9, 1, 2, 0), end: utc2(2026, 9, 1, 3, 0),
+                        timeZoneIdentifier: "Australia/Perth", title: "在珀斯做的"),
+            ActualBlock(start: utc2(2026, 9, 2, 0, 0), end: utc2(2026, 9, 2, 1, 0),
+                        timeZoneIdentifier: "America/New_York", title: "在纽约做的")
+        ]
+        let md = MarkdownRenderer.render(record: rec, usage: nil, settings: AppSettings())
+        XCTAssertTrue(md.contains("- 10:00 至 11:00：在珀斯做的"))
+        XCTAssertTrue(md.contains("20:00 至 21:00（America/New_York）：在纽约做的"),
+                      "跨时区块必须导出为它自己的墙钟时间并标注时区。实际导出：\n\(md)")
+        XCTAssertFalse(md.contains("08:00 至 09:00：在纽约做的"),
+                       "绝不能按记录时区把纽约 20:00 渲染成珀斯次日 08:00")
+    }
+
+    /// 投影里越界块的标签同样按自身时区。
+    func testProjectionOutOfRangeLabelUsesOwnZone() {
+        var rec = DayRecord(key: DayKey(date: "2026-09-01", timeZoneIdentifier: "Australia/Perth"))
+        rec.actual = [ActualBlock(start: utc2(2026, 9, 2, 0, 0), end: utc2(2026, 9, 2, 1, 0),
+                                  timeZoneIdentifier: "America/New_York", title: "越界")]
+        let p = DayTimelineProjection.project(record: rec)
+        XCTAssertEqual(p.outOfRange.count, 1)
+        XCTAssertTrue(p.outOfRange[0].label.hasPrefix("20:00"),
+                      "越界提示也要给纽约的 20:00；实际：\(p.outOfRange[0].label)")
+    }
+}

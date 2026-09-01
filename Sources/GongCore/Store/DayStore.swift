@@ -201,6 +201,10 @@ final class DayStore: ObservableObject {
 
     func dismissNotice() { notice = nil }
 
+    func note(_ level: Notice.Level, _ text: String) {
+        notice = Notice(level: level, text: text)
+    }
+
     /// 退出时的同步落盘。**不能用 await** —— `applicationWillTerminate` 运行在主线程，
     /// 若在此阻塞等待 @MainActor Task，Task 永远拿不到主线程，必然死锁。
     func saveSynchronouslyForTermination() {

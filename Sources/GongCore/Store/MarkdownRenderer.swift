@@ -46,13 +46,10 @@ enum MarkdownRenderer {
         if record.actual.isEmpty {
             out.append("- （未记录）")
         } else {
-            let cal = record.key.calendar
             for b in record.actual.sorted(by: { $0.start < $1.start }) {
-                func hm(_ d: Date) -> String {
-                    String(format: "%02d:%02d",
-                           cal.component(.hour, from: d), cal.component(.minute, from: d))
-                }
-                out.append("- \(hm(b.start)) 至 \(hm(b.end))：\(b.title)")
+                // 按块自身时区渲染，跨时区时带上时区标识 —— 否则导出的墙钟时间是错的
+                let label = b.rangeLabel(recordTimeZoneIdentifier: record.key.timeZoneIdentifier)
+                out.append("- \(label)：\(b.title)")
             }
         }
         out.append("")

@@ -168,6 +168,7 @@ struct GongTableView: View {
     private var stem: some View {
         VStack(spacing: 10) {
             let proj = projection
+            if let recTZ = timeZoneMismatch { timeZoneNote(recTZ) }
             RibbonView(projection: proj)
             if !proj.outOfRange.isEmpty { outOfRangeNote(proj.outOfRange) }
             HStack(alignment: .top, spacing: 0) {
@@ -180,6 +181,24 @@ struct GongTableView: View {
         }
         .padding(.horizontal, 52)          // 内缩 → 工字剪影
         .padding(.vertical, 16)
+    }
+
+    /// 记录时区 ≠ 当前系统时区时常驻提示。统计与时间轴都按**记录建立时的时区**
+    /// 计算日界，这会让「今天」的边界与你此刻所在地不同——必须说清楚，不能让用户自己猜。
+    private func timeZoneNote(_ recTZ: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("这一天按 \(recTZ) 的日界计算")
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.plan)
+            Text("记录建立于该时区。你当前在 \(TimeZone.current.identifier)，"
+                 + "因此时间轴与使用统计的日界与你此刻的当地日期不同，部分活动会归到相邻的一天。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.plan.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.plan.opacity(0.35)))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     /// 有实际记录落在当日投影范围之外时，明确告知——绝不静默隐藏数据。
@@ -248,7 +267,8 @@ struct GongTableView: View {
                 HStack(spacing: 8) {
                     Text(actualRange(blk))
                         .font(Theme.monoSized(11)).foregroundStyle(.secondary)
-                        .frame(width: 96, alignment: .leading)
+                        .frame(width: 150, alignment: .leading)
+                        .lineLimit(1).truncationMode(.middle)
                     BufferedTextField(contextID: ctx("actual", blk.id.uuidString),
                                       placeholder: "内容", value: blk.title) { v in
                         store.mutate { rec in
@@ -301,11 +321,8 @@ struct GongTableView: View {
     }
 
     private func actualRange(_ blk: ActualBlock) -> String {
-        let cal = store.record.key.calendar
-        func hm(_ d: Date) -> String {
-            String(format: "%02d:%02d", cal.component(.hour, from: d), cal.component(.minute, from: d))
-        }
-        return "\(hm(blk.start)) 至 \(hm(blk.end))"
+        // 按块自身时区渲染；与记录时区不同时会带上时区标识
+        blk.rangeLabel(recordTimeZoneIdentifier: store.record.key.timeZoneIdentifier)
     }
 
     private func addActualManually() {
@@ -316,12 +333,25 @@ struct GongTableView: View {
         }
     }
 
+    /// 记录所属时区与当前系统时区不一致时，统计口径需要明说。
+    private var timeZoneMismatch: String? {
+        let recTZ = store.record.key.timeZoneIdentifier
+        let sysTZ = TimeZone.current.identifier
+        return recTZ == sysTZ ? nil : recTZ
+    }
+
     /// R6 的回报：把真实的前台区间转成「实际」条目。
     private func fillFromMonitor() {
         guard let usage = store.usage else { return }
         let merged = usage.intervals.filter { $0.seconds >= 600 }   // 10 分钟以上才值得记
         guard !merged.isEmpty else {
-            store.mutate { _ in }
+            // 不要静默什么都不做 —— 说明为什么没有可填的内容
+            if let recTZ = timeZoneMismatch {
+                store.note(.warning, "没有可填充的区间。这一天按 \(recTZ) 的日界统计（记录建于该时区），"
+                                     + "你当前在 \(TimeZone.current.identifier)，本时段的活动可能被归到相邻的一天。")
+            } else {
+                store.note(.info, "这一天还没有超过 10 分钟的前台区间可供填充。")
+            }
             return
         }
         store.mutate { rec in

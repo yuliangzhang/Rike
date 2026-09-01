@@ -45,6 +45,11 @@ struct BufferedTextField: View {
                 // 失焦时补一次提交，覆盖「粘贴后立即失焦」这类路径
                 if !isFocused { commit(text, requireFocus: false) }
             }
+            // context 变化时强制重建底层 NSTextField —— 只重置 @State 不够：
+            // AppKit 文本控件自带 undo 栈，切日后按 ⌘Z 可能把**前一天的文本**
+            // 恢复进当前 binding，而那时 primedContext 已经匹配新日，guard 拦不住。
+            // 重建控件会连同 undo 栈一起丢弃。primedContext 保留作第二道防线。
+            .id(contextID)
     }
 
     private func adopt() {
@@ -102,6 +107,8 @@ struct BufferedTextEditor: View {
             .onChange(of: focused) { _, isFocused in
                 if !isFocused { commit(text, requireFocus: false) }
             }
+            // 同上：重建底层 NSTextView 以丢弃 undo 栈
+            .id(contextID)
     }
 
     private func adopt() {

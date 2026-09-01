@@ -193,6 +193,22 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     var interval: DateInterval { DateInterval(start: start, end: max(start, end)) }
     var durationSeconds: TimeInterval { max(0, end.timeIntervalSince(start)) }
     var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }
+
+    /// 墙钟标签。**必须按这个块自己发生地的时区渲染**，不能用所属记录的时区——
+    /// 否则在珀斯的 09-01 记录里，一条发生在纽约 20:00 的实际块会被显示/导出成
+    /// 珀斯的次日 08:00，记录语义就错了。
+    /// 当它与记录所在时区不同时，标签里附上时区标识。
+    func rangeLabel(recordTimeZoneIdentifier: String) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        func hm(_ d: Date) -> String {
+            String(format: "%02d:%02d", cal.component(.hour, from: d), cal.component(.minute, from: d))
+        }
+        let base = "\(hm(start)) 至 \(hm(end))"
+        return timeZoneIdentifier == recordTimeZoneIdentifier
+            ? base
+            : "\(base)（\(timeZoneIdentifier)）"
+    }
 }
 
 /// 模糊拆解器的一条。第 04 栏 firstStep 为空 = 未完成。
