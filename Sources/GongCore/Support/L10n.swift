@@ -55,6 +55,7 @@ enum S: CaseIterable {
     // 工字表
     case bandTodo, bandSummary, todoPlaceholder
     case kindFloorMenu, kindMitMenu, kindNormalMenu, delete, today
+    case pickDateHelp, prevDayHelp, nextDayHelp
     case colPlan, colActual, colTotal, rangeSep, blockContent
     case addPlan, addActual, fillFromMonitor, fillFromMonitorHelp
     case foreignTZHelp, tzNoteTitle, tzNoteBody, outOfRangeTitle, outOfRangeBody
@@ -150,6 +151,10 @@ extension S {
         case .kindNormalMenu: return ("· 普通", "· Normal")
         case .delete:         return ("删除", "Delete")
         case .today:          return ("今天", "Today")
+        case .pickDateHelp:   return ("点击选择任意一天（补昨天的总结、给未来的安排先记一笔）",
+                                     "Click to jump to any day (backfill yesterday, pre-note a future meeting)")
+        case .prevDayHelp:    return ("前一天　⌘←", "Previous day　⌘←")
+        case .nextDayHelp:    return ("后一天　⌘→", "Next day　⌘→")
         case .colPlan:        return ("计划", "Plan")
         case .colActual:      return ("实际", "Actual")
         case .colTotal:       return ("共 %@", "%@ total")

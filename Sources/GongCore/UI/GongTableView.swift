@@ -13,6 +13,7 @@ struct GongTableView: View {
     @ObservedObject var settings: SettingsStore
 
     @State private var newTodoText = ""
+    @State private var showDatePicker = false
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case newTodo, todo(UUID), touched, freeText }
@@ -132,22 +133,90 @@ struct GongTableView: View {
 
     // MARK: 日期导航
 
+    /// 日期导航。
+    ///
+    /// 使用场景是明确的：昨天的计划今早补总结、看到未来的会议先跳过去记一笔。
+    /// 所以除了左右各一天，还必须能**直接跳到任意一天**——靠点箭头翻五次不叫能用。
+    ///
+    /// 三条路都给：箭头（相邻一天）、点日期开日历（任意一天）、键盘（⌘← ⌘→ ⌘T）。
     private var dateNav: some View {
-        HStack(spacing: 10) {
-            Button { shiftDay(-1) } label: { Image(systemName: "chevron.left") }
-                .buttonStyle(.borderless)
-            Text(store.record.key.displayLabel)
-                .font(Theme.mono(Theme.Size.meta))
-                .monospacedDigit()
-                .foregroundStyle(Theme.ink2)
-                .frame(minWidth: 128)
-            Button { shiftDay(1) } label: { Image(systemName: "chevron.right") }
-                .buttonStyle(.borderless)
+        HStack(spacing: 6) {
+            navArrow("chevron.left", -1)
+
+            // 点日期 → 日历弹出，任意一天直达
+            Button { showDatePicker.toggle() } label: {
+                HStack(spacing: 6) {
+                    Text(store.record.key.displayLabel)
+                        .font(Theme.mono(Theme.Size.meta, .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.ink)
+                    Image(systemName: "calendar")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.muted)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .frame(minWidth: 150)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Theme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.rule))
+            .help(L(.pickDateHelp))
+            .popover(isPresented: $showDatePicker, arrowEdge: .bottom) {
+                datePickerPopover
+            }
+
+            navArrow("chevron.right", 1)
+
             Button(L(.today)) { goToday() }
-                .buttonStyle(.borderless)
-                .font(Theme.ui(Theme.Size.meta))
+                .buttonStyle(.plain)
+                .font(Theme.ui(Theme.Size.meta, .medium))
+                .foregroundStyle(isToday ? Theme.faint : Theme.plan)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .disabled(isToday)
                 .keyboardShortcut("t", modifiers: .command)
         }
+    }
+
+    /// 箭头按钮。给足点击面积并显式声明 contentShape ——
+    /// 只画一个 chevron 的话可点区域就只有那几笔的墨迹。
+    private func navArrow(_ symbol: String, _ delta: Int) -> some View {
+        Button { shiftDay(delta) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.plan)
+                .frame(width: 26, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(delta < 0 ? .leftArrow : .rightArrow, modifiers: .command)
+        .help(delta < 0 ? L(.prevDayHelp) : L(.nextDayHelp))
+    }
+
+    private var isToday: Bool {
+        store.record.key.date == GongTime.dayKey(Date(), timeZone: store.record.key.timeZone)
+    }
+
+    private var datePickerPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DatePicker("", selection: Binding(
+                get: {
+                    GongTime.date(fromDayKey: store.record.key.date,
+                                  timeZone: store.record.key.timeZone) ?? Date()
+                },
+                set: { picked in
+                    showDatePicker = false
+                    resignFocusBeforeDayChange()
+                    Task { await store.load(dayKey: DayKey(picked,
+                                                           timeZone: store.record.key.timeZone)) }
+                }),
+                displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .frame(width: 260)
+        }
+        .padding(14)
     }
 
     /// 切日期前先收掉焦点：让正在编辑的输入框走失焦提交路径，
@@ -696,12 +765,18 @@ private struct SelectAllOnClickField: NSViewRepresentable {
 
         private func commit(_ tf: NSTextField?) {
             guard let tf else { return }
-            if let m = GongTime.parseMinutes(tf.stringValue) {
-                parent.onCommit(m)
-                tf.stringValue = GongTime.formatMinutes(m)   // 立刻显示规范化后的值
-            } else {
+            guard let m = GongTime.parseMinutes(tf.stringValue) else {
                 tf.stringValue = parent.initial              // 解析失败就还原，不静默吞掉
+                return
             }
+            let normalized = GongTime.formatMinutes(m)
+            tf.stringValue = normalized                      // 立刻显示规范化后的值
+            // **值没变就不要提交**。onCommit 会走 store.mutate，
+            // 而 mutate 一律 revision+1、置 dirty、重排、重建整棵视图树。
+            // 只是路过一下输入框（比如去点日期箭头）也触发一次重建，
+            // 会把正在进行的那次点击打断——按钮看起来「点了没反应」。
+            guard normalized != parent.initial else { return }
+            parent.onCommit(m)
         }
     }
 }

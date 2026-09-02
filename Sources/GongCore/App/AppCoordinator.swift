@@ -222,10 +222,9 @@ final class AppCoordinator: NSObject, ObservableObject {
     /// 由 `applicationShouldTerminate` 去做异步 shutdown 再 reply。
     /// 顺带也消除了 shutdown 被跑两遍的问题。
     @objc private func quit() {
-        // 推迟一轮 runloop 再 terminate。菜单动作虽然通常在菜单跟踪结束后才发出，
-        // 但状态栏菜单是跑在跟踪循环里的，在里面启动 terminate 的嵌套等待不稳妥。
-        // 注意这里**必须**用 DispatchQueue 而不是 Task：Task 会占住 MainActor，
-        // 那就又回到上面说的那个死锁了。
+        // 推迟一轮 runloop 再 terminate：状态栏菜单的动作发自跟踪循环，
+        // 在里面启动 terminate 不稳妥。
+        // 必须用 DispatchQueue 而不是 Task —— Task 会占住 MainActor。
         DispatchQueue.main.async { NSApp.terminate(nil) }
     }
 
@@ -328,11 +327,22 @@ final class AppCoordinator: NSObject, ObservableObject {
             w.contentView = NSHostingView(rootView: view)
             w.center()
             w.isReleasedWhenClosed = false
+            w.delegate = self
             mainWindow = w
         }
-        // accessory 策略下不会自动获得 key window，必须显式激活
+        // 主窗口开着的时候当作普通应用：Dock 里有图标（最小化后也能认出是哪个应用），
+        // 顶部有应用菜单，⌘Tab 也能切过来。关掉窗口再退回只有菜单栏的形态。
+        // 这是用户明确要的：「最小化后要像 Chrome 那样在右下角看到应用图标」。
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// 主窗口关掉（不是最小化）就退回 accessory，Dock 图标随之消失。
+    /// 最小化时窗口没关，策略保持 regular，Dock 里那一格才留得住。
+    private func releaseDockPresenceIfNoWindow() {
+        guard mainWindow?.isVisible != true, mainWindow?.isMiniaturized != true else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: - 非模态提示浮层
@@ -405,5 +415,15 @@ private extension NSMenu {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         addItem(item)
         return item
+    }
+}
+
+// MARK: - 主窗口生命周期
+
+extension AppCoordinator: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === mainWindow else { return }
+        // windowWillClose 发出时窗口还没真的关，推迟一轮再判断可见性
+        DispatchQueue.main.async { [weak self] in self?.releaseDockPresenceIfNoWindow() }
     }
 }
