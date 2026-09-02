@@ -30,21 +30,27 @@ enum MarkdownRenderer {
         out.append("# \(compact) \(GongTime.weekdayLabel(dayKey: record.date, lang: lang))")
         out.append("")
 
-        // MARK: TODO
-        out.append("## \(t(.mdTodo))")
-        if record.todos.isEmpty {
+        // MARK: 下限（独立一节，它不一定是工作事项）
+        out.append("## \(t(.mdFloor))")
+        if record.floor.text.trimmingCharacters(in: .whitespaces).isEmpty {
             out.append("- \(notRecorded)")
         } else {
-            for todo in record.widgetTodos
-            where !todo.text.trimmingCharacters(in: .whitespaces).isEmpty {
+            let box = record.floor.status == .done ? "[x]" : "[ ]"
+            out.append("- \(box) \(record.floor.text)")
+        }
+        out.append("")
+
+        // MARK: TODO（顺序即优先级，导出时编号，第一条是最重要）
+        out.append("## \(t(.mdTodo))")
+        let todos = record.orderedTodos
+            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        if todos.isEmpty {
+            out.append("- \(notRecorded)")
+        } else {
+            for (i, todo) in todos.enumerated() {
                 let box = todo.status == .done ? "[x]" : "[ ]"
-                let prefix: String
-                switch todo.kind {
-                case .floor:  prefix = t(.mdFloorPrefix)
-                case .mit:    prefix = t(.mdMitPrefix)
-                case .normal: prefix = ""
-                }
-                out.append("- \(box) \(prefix)\(todo.text)")
+                let mark = i == 0 ? t(.mdMitPrefix) : ""
+                out.append("\(i + 1). \(box) \(mark)\(todo.text)")
             }
         }
         out.append("")
@@ -79,6 +85,20 @@ enum MarkdownRenderer {
         out.append("### \(t(.mdTouched))")
         out.append(record.summary.touched.isEmpty ? notRecorded : record.summary.touched)
         out.append("")
+        out.append("### \(t(.mdWins))")
+        let wins = record.summary.wins
+            .filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        if wins.isEmpty {
+            out.append(notRecorded)
+        } else {
+            for (i, w) in wins.enumerated() { out.append("\(i + 1). \(w.text)") }
+        }
+        out.append("")
+
+        out.append("### \(t(.mdTomorrow))")
+        out.append(record.summary.tomorrow.isEmpty ? notRecorded : record.summary.tomorrow)
+        out.append("")
+
         out.append("### \(t(.mdClarity))")
         if record.summary.clarity.isEmpty {
             out.append(notRecorded)

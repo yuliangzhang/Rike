@@ -14,6 +14,8 @@ struct GongTableView: View {
 
     @State private var newTodoText = ""
     @State private var showDatePicker = false
+    @State private var draggingTodo: UUID?
+    @State private var dropTarget: UUID?
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case newTodo, todo(UUID), touched, freeText }
@@ -36,27 +38,118 @@ struct GongTableView: View {
 
     private var topBand: some View {
         GongBand(title: L(.bandTodo), beamEdge: .bottom, trailing: AnyView(dateNav)) {
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(store.record.widgetTodos) { todo in
-                    todoRow(todo)
-                }
-                HStack(spacing: 10) {
-                    Text("＋").font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
-                        .frame(width: 76, alignment: .trailing)
-                    TextField(L(.todoPlaceholder), text: $newTodoText)
-                        .textFieldStyle(.plain)
-                        .font(Theme.ui(Theme.Size.body))
-                        .focused($focusedField, equals: .newTodo)
-                        .onSubmit(addTodo)
-                }
-                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 12) {
+                floorRow
+                todoList
             }
         }
     }
 
-    private func todoRow(_ todo: Todo) -> some View {
+    // MARK: 下限（独立于 TODO）
+
+    /// 下限单独一行，不混在 TODO 里。
+    /// 用户的原话：「下限可能不是 TODO List 中的」——比如「今天必须在 23:00 前睡觉」。
+    /// 那不是一件要做的工作，是一条今天无论如何都要守住的线；
+    /// 塞进工作清单会被淹掉，也就失去了「再累也做得到」的意思。
+    private var floorRow: some View {
         HStack(spacing: 10) {
-            kindBadge(todo)
+            Text(TodoKind.floor.marker)
+                .font(Theme.ui(Theme.Size.body, .semibold))
+                .foregroundStyle(Theme.actual)
+                .frame(width: 16)
+            Text(L(.kindFloor))
+                .font(Theme.ui(Theme.Size.label, .semibold))
+                .foregroundStyle(Theme.actual)
+                .frame(width: 40, alignment: .leading)
+
+            Toggle("", isOn: Binding(
+                get: { store.record.floor.status == .done },
+                set: { on in store.mutate { $0.floor.status = on ? .done : .notRecorded } }))
+                .labelsHidden().toggleStyle(.checkbox)
+
+            BufferedTextField(contextID: ctx("floor", "text"),
+                              placeholder: L(.floorPlaceholder),
+                              value: store.record.floor.text,
+                              font: Theme.ui(Theme.Size.body)) { v in
+                store.mutate { $0.floor.text = v }
+            }
+            .foregroundStyle(store.record.floor.status == .done ? Theme.muted : Theme.ink)
+            .strikethrough(store.record.floor.status == .done, color: Theme.faint)
+        }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(Theme.actual.opacity(0.07))
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.actual).frame(width: 3) }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
+    }
+
+    // MARK: TODO 列表（顺序即优先级）
+
+    private var todoList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            MicroLabel(text: L(.todoPriorityHint))
+                .padding(.bottom, 2)
+
+            // 用普通 VStack 而不是 List：List 自带滚动与行高管理，
+            // 嵌在外层 ScrollView 里会互相抢，行高也只能靠猜。
+            // 拖拽用 onDrag/onDrop 自己接，布局完全可控。
+            ForEach(Array(store.record.orderedTodos.enumerated()), id: \.element.id) { idx, todo in
+                todoRow(todo, rank: idx)
+                    .background(dropTarget == todo.id
+                                ? Theme.plan.opacity(0.12) : Color.clear)
+                    .overlay(alignment: .top) {
+                        // 拖到哪儿，哪儿就出现一条插入线
+                        if dropTarget == todo.id {
+                            Rectangle().fill(Theme.plan).frame(height: 2)
+                        }
+                    }
+                    .onDrag {
+                        draggingTodo = todo.id
+                        return NSItemProvider(object: todo.id.uuidString as NSString)
+                    }
+                    .onDrop(of: [.text], isTargeted: Binding(
+                        get: { dropTarget == todo.id },
+                        set: { on in dropTarget = on ? todo.id : (dropTarget == todo.id ? nil : dropTarget) }
+                    )) { _ in
+                        defer { draggingTodo = nil; dropTarget = nil }
+                        guard let from = draggingTodo,
+                              let src = store.record.orderedTodos.firstIndex(where: { $0.id == from })
+                        else { return false }
+                        // SwiftUI 的 move 语义：往下移时目标要 +1
+                        let dst = src < idx ? idx + 1 : idx
+                        store.mutate { $0.moveTodos(fromOffsets: IndexSet(integer: src), toOffset: dst) }
+                        return true
+                    }
+            }
+
+            HStack(spacing: 10) {
+                Text("＋").font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
+                    .frame(width: 46, alignment: .trailing)
+                TextField(L(.todoPlaceholder), text: $newTodoText)
+                    .textFieldStyle(.plain)
+                    .font(Theme.ui(Theme.Size.body))
+                    .focused($focusedField, equals: .newTodo)
+                    .onSubmit(addTodo)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func todoRow(_ todo: Todo, rank: Int) -> some View {
+        HStack(spacing: 10) {
+            // 排名即优先级。第一条是今天的「最重要」，用 ★ 点出来——
+            // 位置本身就是判断，不需要再让人手动打一个标记。
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.faint.opacity(0.7))
+                    .help(L(.todoDragHelp))
+                Text(rank == 0 ? TodoKind.mit.marker : "\(rank + 1)")
+                    .font(Theme.mono(Theme.Size.label, rank == 0 ? .bold : .regular))
+                    .foregroundStyle(rank == 0 ? Theme.mark : Theme.faint)
+            }
+            .frame(width: 46, alignment: .trailing)
+
             Toggle("", isOn: Binding(
                 get: { todo.status == .done },
                 set: { on in
@@ -90,35 +183,8 @@ struct GongTableView: View {
             .foregroundStyle(Theme.faint)
             .help(L(.delete))
         }
-    }
-
-    /// 下限 / 最重要各限一条 —— 约束在模型层，UI 只是它的投影。
-    private func kindBadge(_ todo: Todo) -> some View {
-        Menu {
-            Button(L(.kindFloorMenu))  { setKind(.floor, todo) }
-            Button(L(.kindMitMenu))    { setKind(.mit, todo) }
-            Button(L(.kindNormalMenu)) { setKind(.normal, todo) }
-        } label: {
-            Text(todo.kind == .normal ? "·" : "\(todo.kind.marker) \(todo.kind.label)")
-                .font(Theme.ui(Theme.Size.label, todo.kind == .normal ? .regular : .semibold))
-                .foregroundStyle(badgeColor(todo.kind))
-                .frame(width: 76, alignment: .trailing)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-    }
-
-    private func badgeColor(_ k: TodoKind) -> Color {
-        switch k {
-        case .floor:  return Theme.actual
-        case .mit:    return Theme.mark
-        case .normal: return Theme.faint
-        }
-    }
-
-    private func setKind(_ kind: TodoKind, _ todo: Todo) {
-        store.mutate { rec in rec.setKind(kind, for: todo.id) }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 
     private func addTodo() {
@@ -478,10 +544,17 @@ struct GongTableView: View {
     private var bottomBand: some View {
         GongBand(title: L(.bandSummary), beamEdge: .top,
                  trailing: AnyView(statusLine), journal: true) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 labeledEditor(L(.summaryTouched), hint: L(.summaryTouchedHint),
                               value: store.record.summary.touched, serif: true) { v in
                     store.mutate { $0.summary.touched = v }
+                }
+
+                winsBlock
+
+                labeledEditor(L(.summaryTomorrow), hint: L(.summaryTomorrowHint),
+                              value: store.record.summary.tomorrow, serif: true) { v in
+                    store.mutate { $0.summary.tomorrow = v }
                 }
 
                 clarityBlock
@@ -489,6 +562,54 @@ struct GongTableView: View {
                 labeledEditor(L(.summaryNote), hint: L(.summaryNoteHint),
                               value: store.record.summary.freeText, serif: true) { v in
                     store.mutate { $0.summary.freeText = v }
+                }
+            }
+        }
+    }
+
+    // MARK: 成功日记
+
+    /// 《小狗钱钱》的成功日记：每天记下几件**自己做成的小事**。
+    /// 和「触动」区别开——触动可以是坏的，这里只记做成的。
+    /// 不设上限也不打分，写几条都算数（提示写 3~5 条，但空着也不报错）。
+    private var winsBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                MicroLabel(text: L(.summaryWins))
+                Text(L(.summaryWinsHint))
+                    .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
+                Spacer()
+                Button(L(.summaryWinsAdd)) {
+                    store.mutate { $0.summary.wins.append(WinEntry()) }
+                }
+                .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium))
+                .foregroundStyle(Theme.muted)
+            }
+            if store.record.summary.wins.isEmpty {
+                Text(L(.summaryWinsEmpty))
+                    .font(Theme.serif(Theme.Size.body)).foregroundStyle(Theme.faint)
+                    .padding(.vertical, 3)
+            }
+            ForEach(Array(store.record.summary.wins.enumerated()), id: \.element.id) { idx, win in
+                HStack(alignment: .top, spacing: 10) {
+                    Text("\(idx + 1)")
+                        .font(Theme.mono(Theme.Size.label)).foregroundStyle(Theme.actual)
+                        .frame(width: 18, alignment: .trailing)
+                        .padding(.top, 2)
+                    BufferedTextField(contextID: ctx("win", win.id.uuidString),
+                                      placeholder: L(.summaryWinsPlaceholder),
+                                      value: win.text,
+                                      font: Theme.serif(Theme.Size.bodyLarge)) { v in
+                        store.mutate { rec in
+                            if let i = rec.summary.wins.firstIndex(where: { $0.id == win.id }) {
+                                rec.summary.wins[i].text = v
+                            }
+                        }
+                    }
+                    Button {
+                        store.mutate { $0.summary.wins.removeAll { $0.id == win.id } }
+                    } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                    .buttonStyle(.plain).foregroundStyle(Theme.faint)
                 }
             }
         }
@@ -549,7 +670,7 @@ private struct ClarityRow: View {
     private var dayKey: String { store.record.key.date }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             field(L(.clarity01), entry.stuckOn)      { v in update { $0.stuckOn = v } }
             field(L(.clarity02), entry.escapingFrom) { v in update { $0.escapingFrom = v } }
             field(L(.clarity03), entry.worstCase)    { v in update { $0.worstCase = v } }
@@ -565,24 +686,38 @@ private struct ClarityRow: View {
                 }
                 .buttonStyle(.plain).font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
             }
-            .padding(.top, 3)
+            .padding(.horizontal, 12).padding(.vertical, 8)
         }
-        .padding(11)
         .background(Theme.inset)
         .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall).strokeBorder(Theme.rule))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
     }
 
+    /// 一行 = 标签列 + 分隔线 + 输入列。
+    ///
+    /// 改前两列之间什么都没有，输入框也没有边框，光标停在一片空白里，
+    /// 看不出哪儿能写、写到哪儿为止。现在：标签列右侧一条竖线把两列分开，
+    /// 输入区给底色和下划线，聚焦时下划线变亮。
     private func field(_ label: String, _ value: String,
                        _ set: @escaping (String) -> Void) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 0) {
             Text(label)
-                .font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.faint)
-                .frame(width: 250, alignment: .leading)
+                .font(Theme.ui(Theme.Size.label, .medium)).foregroundStyle(Theme.muted)
+                .frame(width: 210, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)   // 英文更长，允许折行而不是截断
+                .padding(.trailing, 12)
+                .padding(.vertical, 6)
+
+            Rectangle().fill(Theme.rule).frame(width: 1)        // 两列之间的分隔线
+
             BufferedTextField(contextID: "\(dayKey)|clarity|\(entry.id.uuidString)|\(label)",
+                              placeholder: "…",
                               value: value, font: Theme.ui(Theme.Size.body), onChange: set)
+                .padding(.leading, 12)
+                .padding(.vertical, 6)
         }
+        .background(Theme.surface.opacity(0.55))
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
     }
 
     private func update(_ change: @escaping (inout ClarityEntry) -> Void) {

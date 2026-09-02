@@ -35,13 +35,13 @@ final class DayStoreIntegrationTests: XCTestCase {
         let store = makeStore()
         await store.load(dayKey: DayKey(date: "2026-08-31", timeZoneIdentifier: "Australia/Perth"))
 
-        store.mutate { $0.todos = [Todo(text: "跑通图表", kind: .floor)] }
+        store.mutate { $0.todos = [Todo(text: "跑通图表", order: 0)] }
         await store.saveNow()
 
         let fresh = makeStore()
         await fresh.load(dayKey: DayKey(date: "2026-08-31", timeZoneIdentifier: "Australia/Perth"))
         XCTAssertEqual(fresh.record.todos.first?.text, "跑通图表")
-        XCTAssertEqual(fresh.record.todos.first?.kind, .floor)
+        XCTAssertEqual(fresh.record.mitTodo?.text, "跑通图表", "第一条就是最重要")
     }
 
     /// 连续快速编辑 —— 最后一次的内容必须完整落盘，不能被中途的旧快照盖回去。

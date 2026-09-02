@@ -23,7 +23,7 @@ final class ExportSafetyTests: XCTestCase {
 
     private func makeRecord(text: String = "把蜂箱数据分析报告的图表跑通") -> DayRecord {
         var r = DayRecord(date: "2026-08-31")
-        r.todos = [Todo(text: text, kind: .floor)]
+        r.todos = [Todo(text: text, order: 0)]
         return r
     }
 
@@ -157,13 +157,50 @@ final class ExportSafetyTests: XCTestCase {
 
     func testRenderUsesNeutralWording() {
         var rec = makeRecord()
-        rec.todos[0].status = .done
+        rec.floor.text = "23:00 前睡觉"
+        rec.floor.status = .done
+        rec.todos[0].status = .notRecorded
         let text = MarkdownRenderer.render(record: rec, usage: nil, settings: makeSettings())
-        XCTAssertTrue(text.contains("- 下限：已完成"))
-        XCTAssertTrue(text.contains("- 最重要：未记录"), "没有 MIT 应为「未记录」而非「未达成」")
+        XCTAssertTrue(text.contains("- 下限：已完成"), text)
+        XCTAssertTrue(text.contains("- 最重要：未记录"), "未做的第一条应为「未记录」而非「未达成」\n\(text)")
         XCTAssertFalse(text.contains("✓"))
         XCTAssertFalse(text.contains("⚠"))
         XCTAssertFalse(text.contains("！"))
+    }
+
+    /// 下限单独成节，且不占用 TODO 的位置。
+    func testFloorExportsAsItsOwnSection() {
+        var rec = makeRecord()
+        rec.floor.text = "今天必须在 23:00 前睡觉"
+        let text = MarkdownRenderer.render(record: rec, usage: nil, settings: makeSettings())
+        XCTAssertTrue(text.contains("## 今日下限"), text)
+        XCTAssertTrue(text.contains("今天必须在 23:00 前睡觉"), text)
+        // TODO 一节里不该重复出现下限
+        let todoSection = text.components(separatedBy: "## 今日 TODO")[1]
+        XCTAssertFalse(todoSection.contains("23:00 前睡觉"))
+    }
+
+    /// TODO 按优先级编号导出，第一条带最重要标记。
+    func testTodosExportNumberedByPriority() {
+        var rec = makeRecord()
+        rec.todos = [Todo(text: "最要紧的", order: 0), Todo(text: "其次", order: 1)]
+        let text = MarkdownRenderer.render(record: rec, usage: nil, settings: makeSettings())
+        XCTAssertTrue(text.contains("1. [ ] ★ 最重要：最要紧的"), text)
+        XCTAssertTrue(text.contains("2. [ ] 其次"), text)
+    }
+
+    /// 成功日记与明天会更好也要进导出。
+    func testWinsAndTomorrowExport() {
+        var rec = makeRecord()
+        rec.summary.wins = [WinEntry(text: "把拖了很久的邮件发出去了"),
+                            WinEntry(text: "删干净了一段乱码")]
+        rec.summary.tomorrow = "上午不开会，留给深度工作"
+        let text = MarkdownRenderer.render(record: rec, usage: nil, settings: makeSettings())
+        XCTAssertTrue(text.contains("### 成功日记"), text)
+        XCTAssertTrue(text.contains("1. 把拖了很久的邮件发出去了"), text)
+        XCTAssertTrue(text.contains("2. 删干净了一段乱码"), text)
+        XCTAssertTrue(text.contains("### 明天会更好"), text)
+        XCTAssertTrue(text.contains("上午不开会，留给深度工作"), text)
     }
 
     // MARK: 9. 导出文件名与星期由 Calendar 计算

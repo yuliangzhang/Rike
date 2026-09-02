@@ -56,10 +56,13 @@ enum S: CaseIterable {
     case bandTodo, bandSummary, todoPlaceholder
     case kindFloorMenu, kindMitMenu, kindNormalMenu, delete, today
     case pickDateHelp, prevDayHelp, nextDayHelp
+    case floorPlaceholder, todoPriorityHint, todoDragHelp
     case colPlan, colActual, colTotal, rangeSep, blockContent
     case addPlan, addActual, fillFromMonitor, fillFromMonitorHelp
     case foreignTZHelp, tzNoteTitle, tzNoteBody, outOfRangeTitle, outOfRangeBody
     case summaryTouched, summaryTouchedHint, summaryNote, summaryNoteHint
+    case summaryWins, summaryWinsHint, summaryWinsAdd, summaryWinsEmpty, summaryWinsPlaceholder
+    case summaryTomorrow, summaryTomorrowHint
     case clarityTitle, clarityAdd, clarity01, clarity02, clarity03, clarity04
     case clarityDone, clarityUndone
     case statusFloor, statusMit
@@ -120,7 +123,7 @@ enum S: CaseIterable {
 
     // Markdown 导出
     case mdTodo, mdNotRecorded, mdFloorPrefix, mdMitPrefix, mdPlan, mdActual
-    case mdSummary, mdTouched, mdClarity
+    case mdSummary, mdTouched, mdClarity, mdFloor, mdWins, mdTomorrow
     case mdStuckOn, mdEscapingFrom, mdWorstCase, mdFirstStep
     case mdNote, mdStatus, mdFloorLine, mdMitLine
     case mdAttention, mdInterruption, mdEscaping, mdUsageTop5
@@ -153,6 +156,12 @@ extension S {
         case .today:          return ("今天", "Today")
         case .pickDateHelp:   return ("点击选择任意一天（补昨天的总结、给未来的安排先记一笔）",
                                      "Click to jump to any day (backfill yesterday, pre-note a future meeting)")
+        case .floorPlaceholder:
+            return ("再累也做得到的那一件（可以不是工作，例如：23:00 前睡觉）",
+                    "The one thing doable however tired (needn't be work — e.g. in bed by 23:00)")
+        case .todoDragHelp:   return ("拖动这里调整优先级", "Drag here to reorder")
+        case .todoPriorityHint:
+            return ("按重要性从高到低排，可拖动调整", "Most important first — drag to reorder")
         case .prevDayHelp:    return ("前一天　⌘←", "Previous day　⌘←")
         case .nextDayHelp:    return ("后一天　⌘→", "Next day　⌘→")
         case .colPlan:        return ("计划", "Plan")
@@ -183,6 +192,16 @@ extension S {
         case .summaryTouched:    return ("触动", "What moved me")
         case .summaryTouchedHint:return ("今天最触动我的一件事，好坏都算，写细",
                                          "The one thing that moved me today — good or bad. Be specific.")
+        case .summaryWins:      return ("成功日记", "Wins")
+        case .summaryWinsHint:  return ("3~5 条今天做成的小事", "3–5 small things you got done today")
+        case .summaryWinsAdd:   return ("＋ 记一条", "＋ Add one")
+        case .summaryWinsEmpty: return ("再小也算——寄出一封拖了很久的邮件、把一段代码删干净。",
+                                        "However small — sending that overdue email, deleting a messy function.")
+        case .summaryWinsPlaceholder: return ("今天我做成的一件小事", "One small thing I got done")
+        case .summaryTomorrow:  return ("明天会更好", "Tomorrow, better")
+        case .summaryTomorrowHint:
+            return ("要调整什么，明天才会比今天顺——策略、安排、环境，写一条就够",
+                    "What to change so tomorrow goes better — strategy, schedule, environment. One line is enough.")
         case .summaryNote:       return ("备注", "Notes")
         case .summaryNoteHint:   return ("可留空", "Optional")
         case .clarityTitle:      return ("模糊清单", "Fog list")
@@ -432,6 +451,9 @@ extension S {
         case .mdSummary:     return ("今日总结", "Today's Summary")
         case .mdTouched:     return ("触动", "What moved me")
         case .mdClarity:     return ("模糊清单", "Fog list")
+        case .mdFloor:       return ("今日下限", "Today's floor")
+        case .mdWins:        return ("成功日记", "Wins")
+        case .mdTomorrow:    return ("明天会更好", "Tomorrow, better")
         case .mdStuckOn:       return ("卡住的具体位置", "Exactly where I'm stuck")
         case .mdEscapingFrom:  return ("真正想逃开的是", "What I'm actually escaping")
         case .mdWorstCase:     return ("最坏情况", "Worst case")

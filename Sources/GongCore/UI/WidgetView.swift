@@ -16,10 +16,13 @@ struct WidgetView: View {
             header
             Rectangle().fill(Theme.beam).frame(height: 2)
             VStack(alignment: .leading, spacing: 8) {
+                if !store.record.floor.text.isEmpty { floorLine }
                 if topThree.isEmpty {
                     Text(L(.widgetEmpty)).font(Theme.ui(Theme.Size.meta)).foregroundStyle(Theme.muted)
                 } else {
-                    ForEach(topThree) { t in todoLine(t) }
+                    ForEach(Array(topThree.enumerated()), id: \.element.id) { idx, t in
+                        todoLine(t, rank: idx)
+                    }
                 }
                 Rectangle().fill(Theme.rule).frame(height: 1).padding(.vertical, 2)
                 currentBlockLine
@@ -59,12 +62,28 @@ struct WidgetView: View {
         .background(Theme.band)
     }
 
-    private func todoLine(_ t: Todo) -> some View {
+    /// 下限单独一行，且排在最前 —— 它不是工作事项，是今天要守住的那条线。
+    private var floorLine: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(t.kind.marker)
+            Text(TodoKind.floor.marker)
                 .font(Theme.mono(Theme.Size.meta, .medium))
-                .foregroundStyle(t.kind == .floor ? Theme.actual
-                                 : t.kind == .mit ? Theme.mark : Theme.faint)
+                .foregroundStyle(Theme.actual)
+                .frame(width: 13)
+            Text(store.record.floor.text)
+                .font(Theme.ui(Theme.Size.body))
+                .foregroundStyle(store.record.floor.status == .done ? Theme.muted : Theme.ink)
+                .strikethrough(store.record.floor.status == .done, color: Theme.faint)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// 顺序即优先级：第一条标 ★，其余标序号。
+    private func todoLine(_ t: Todo, rank: Int) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(rank == 0 ? TodoKind.mit.marker : "\(rank + 1)")
+                .font(Theme.mono(Theme.Size.meta, rank == 0 ? .bold : .regular))
+                .foregroundStyle(rank == 0 ? Theme.mark : Theme.faint)
                 .frame(width: 13)
             Text(t.text.isEmpty ? L(.emptyBrackets) : t.text)
                 .font(Theme.ui(Theme.Size.body))

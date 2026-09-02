@@ -324,13 +324,59 @@ struct BreakerDay: Codable, Hashable, Sendable {
     var timerRuns: Int = 0
 }
 
+/// 成功日记的一条。灵感来自《小狗钱钱》：每天记下几件**自己做成的小事**。
+/// 它和「触动」不同——触动可以是坏的，成功日记只记做成的。
+struct WinEntry: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID = UUID()
+    var text: String = ""
+}
+
+/// 今日总结。
+///
 /// 注意：**不含 floorStatus / mitStatus**。
-/// 那会与 `Todo.status` 构成双重事实源，导致「TODO 已完成但总结显示未记录」。
-/// 下限/最重要的状态一律从 kind == .floor/.mit 的 Todo 派生。
+/// 那会与真实来源构成双重事实源，导致「已完成但总结显示未记录」。
+/// 下限状态来自 `DayRecord.floor`，最重要状态来自 TODO 列表的第一条。
+///
+/// **新增字段一律走 `decodeIfPresent`**（见下面的 `init(from:)`）：
+/// 合成的 Codable 在缺键时会**抛错**，非可选字段哪怕写了默认值也救不了旧记录，
+/// 结果就是打开历史某天报「读取失败」，看起来像数据没了。
 struct DaySummary: Codable, Hashable, Sendable {
     var touched: String = ""
+    /// 成功日记：3~5 条自己觉得有成就的小事。
+    var wins: [WinEntry] = []
+    /// 明天会更好：怎么调整策略/安排，让明天做得更好。
+    var tomorrow: String = ""
     var clarity: [ClarityEntry] = []
     var freeText: String = ""
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        touched  = try c.decodeIfPresent(String.self, forKey: .touched) ?? ""
+        wins     = try c.decodeIfPresent([WinEntry].self, forKey: .wins) ?? []
+        tomorrow = try c.decodeIfPresent(String.self, forKey: .tomorrow) ?? ""
+        clarity  = try c.decodeIfPresent([ClarityEntry].self, forKey: .clarity) ?? []
+        freeText = try c.decodeIfPresent(String.self, forKey: .freeText) ?? ""
+    }
+}
+
+/// 今日下限：**独立于 TODO**。
+///
+/// 用户的原话：「下限可能不是 TODO List 中的」——比如「今天必须在 23:00 前睡觉」，
+/// 那不是一件要做的工作，而是一条今天无论如何都要守住的线。
+/// 硬塞进 TODO 列表既别扭，也会让「再累也做得到」这条原则被工作事项淹没。
+struct FloorItem: Codable, Hashable, Sendable {
+    var text: String = ""
+    var status: ItemStatus = .notRecorded
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text   = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        status = try c.decodeIfPresent(ItemStatus.self, forKey: .status) ?? .notRecorded
+    }
 }
 
 /// Markdown 导出状态。与 DayRecord 一起原子落盘，避免两处写入交错。
@@ -354,6 +400,9 @@ struct DayRecord: Codable, Identifiable, Hashable, Sendable {
     var breaker: BreakerDay = BreakerDay()
     var updatedAt: Date = Date()
 
+    /// 今日下限。独立于 TODO —— 见 `FloorItem` 的说明。
+    var floor: FloorItem = FloorItem()
+
     /// 单调递增，用于拒绝过期快照写入（防 lost update）。
     var revision: Int = 0
 
@@ -365,42 +414,63 @@ struct DayRecord: Codable, Identifiable, Hashable, Sendable {
     init(key: DayKey) { self.key = key }
     init(date: String) { self.key = DayKey(date: date) }
 
-    // MARK: 约束：下限 / 最重要各限一条
+    /// 手写解码，新增字段一律 `decodeIfPresent`。
+    /// 合成版在缺键时会抛错，旧记录会整条读不出来。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion)
+            ?? DayRecord.currentSchemaVersion
+        key       = try c.decode(DayKey.self, forKey: .key)        // 没有它这条记录就没有意义
+        todos     = try c.decodeIfPresent([Todo].self, forKey: .todos) ?? []
+        planned   = try c.decodeIfPresent([PlannedBlock].self, forKey: .planned) ?? []
+        actual    = try c.decodeIfPresent([ActualBlock].self, forKey: .actual) ?? []
+        summary   = try c.decodeIfPresent(DaySummary.self, forKey: .summary) ?? DaySummary()
+        breaker   = try c.decodeIfPresent(BreakerDay.self, forKey: .breaker) ?? BreakerDay()
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        revision  = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
+        exportState = try c.decodeIfPresent(ExportState.self, forKey: .exportState)
 
-    mutating func setKind(_ kind: TodoKind, for todoId: UUID) {
-        guard let idx = todos.firstIndex(where: { $0.id == todoId }) else { return }
-        if kind != .normal {
-            for i in todos.indices where todos[i].kind == kind && todos[i].id != todoId {
-                todos[i].kind = .normal
-            }
+        // 下限迁移：老版本把下限做成 TODO 上的一个标记。
+        // 如果新字段还没有、而 TODO 里有一条标了 .floor，就把它搬过来并从列表里移除，
+        // 免得同一件事出现两遍。
+        if let f = try c.decodeIfPresent(FloorItem.self, forKey: .floor) {
+            floor = f
+        } else if let legacy = todos.first(where: { $0.kind == .floor }) {
+            floor = FloorItem()
+            floor.text = legacy.text
+            floor.status = legacy.status
+            todos.removeAll { $0.id == legacy.id }
         }
-        todos[idx].kind = kind
     }
 
-    var floorTodo: Todo? { todos.first { $0.kind == .floor } }
-    var mitTodo: Todo?   { todos.first { $0.kind == .mit } }
+    /// 最重要 = 列表里的第一条。**顺序即优先级**，不再单独打标记。
+    /// 用户的原话：「TODO 重要性按照顺序排列，重要性由高到低，可自行拖拽调整」。
+    /// 位置本身就是判断，比再加一个徽章更难糊弄自己。
+    var mitTodo: Todo? { orderedTodos.first }
 
-    /// 从 Todo 派生，杜绝双重事实源。
-    var floorStatus: ItemStatus { floorTodo?.status ?? .notRecorded }
+    var floorStatus: ItemStatus { floor.status }
     var mitStatus: ItemStatus   { mitTodo?.status ?? .notRecorded }
 
-    /// 挂件展示顺序：下限 → 最重要 → 其余按 order。
-    var widgetTodos: [Todo] {
-        todos.filter { $0.kind == .floor }
-            + todos.filter { $0.kind == .mit }
-            + todos.filter { $0.kind == .normal }.sorted { $0.order < $1.order }
+    var orderedTodos: [Todo] { todos.sorted { $0.order < $1.order } }
+
+    /// 挂件展示顺序：就是优先级顺序。
+    var widgetTodos: [Todo] { orderedTodos }
+
+    /// 拖拽调整优先级。
+    mutating func moveTodos(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var list = orderedTodos
+        list.move(fromOffsets: source, toOffset: destination)
+        for (i, t) in list.enumerated() {
+            if let idx = todos.firstIndex(where: { $0.id == t.id }) { todos[idx].order = i }
+        }
     }
 
     mutating func normalize() {
-        var seenFloor = false, seenMit = false
+        todos.sort { $0.order < $1.order }
         for i in todos.indices {
-            switch todos[i].kind {
-            case .floor: if seenFloor { todos[i].kind = .normal } else { seenFloor = true }
-            case .mit:   if seenMit   { todos[i].kind = .normal } else { seenMit = true }
-            case .normal: break
-            }
+            todos[i].order = i
+            todos[i].kind = .normal      // 顺序即优先级之后，kind 不再承载语义
         }
-        for i in todos.indices { todos[i].order = i }
         planned.sort { $0.startMinute < $1.startMinute }
         actual.sort { $0.start < $1.start }
     }

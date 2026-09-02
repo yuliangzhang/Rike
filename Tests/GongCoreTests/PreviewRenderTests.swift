@@ -18,9 +18,11 @@ final class PreviewRenderTests: XCTestCase {
         let day = DayStore(dayKey: DayKey(date: "2026-09-01",
                                           timeZoneIdentifier: TimeZone.current.identifier))
         day.mutate { rec in
+            rec.floor.text = "今天必须在 23:00 前睡觉"
+            rec.floor.status = .done
             rec.todos = [
-                Todo(text: "打开工字表，写下明天的第一步", status: .done, kind: .floor, order: 0),
-                Todo(text: "把审查意见过一遍并合并进主干", kind: .mit, order: 1),
+                Todo(text: "把审查意见过一遍并合并进主干", order: 0),
+                Todo(text: "蜂箱数据管线重写：先写失败用例", order: 1),
                 Todo(text: "回复蜂博会的展位邀请", order: 2)
             ]
             rec.planned = [
@@ -40,6 +42,11 @@ final class PreviewRenderTests: XCTestCase {
             rec.summary.touched = "卡在时区那段两个小时，第一反应又是想去翻小说。"
                 + "停下来花三分钟把「到底卡在哪」写出来，那股劲儿就散了——"
                 + "原来我逃的不是这个问题，是「又要重写一遍」的挫败。"
+            rec.summary.wins = [
+                WinEntry(text: "把拖了三周的展位邀请回掉了"),
+                WinEntry(text: "删干净了 reducer 里那段没人敢动的代码")
+            ]
+            rec.summary.tomorrow = "上午不排会，把最完整的两小时留给数据管线。"
             var c = ClarityEntry()
             c.stuckOn = "实际块跨时区时该按谁的墙钟存"
             c.escapingFrom = "怕结论错了要把三个文件全推倒"

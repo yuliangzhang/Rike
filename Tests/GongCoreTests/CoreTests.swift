@@ -202,48 +202,68 @@ final class ModelInvariantTests: XCTestCase {
         XCTAssertEqual(full.rangeLabel(.zh), "22:00 至 24:00")
     }
 
-    func testFloorAndMitAreUnique() {
+    // MARK: 下限独立 / 顺序即优先级（v0.4 改版）
+
+    /// 下限不再是 TODO 上的标记，而是记录级的独立一项。
+    /// 用户的原话：「下限可能不是 TODO List 中的」——例如「23:00 前睡觉」。
+    func testFloorIsStandaloneNotATodo() {
         var rec = DayRecord(date: "2026-08-31")
-        let a = Todo(text: "A"), b = Todo(text: "B"), c = Todo(text: "C")
-        rec.todos = [a, b, c]
-
-        rec.setKind(.floor, for: a.id)
-        rec.setKind(.floor, for: b.id)              // 第二次设下限
-        XCTAssertEqual(rec.todos.filter { $0.kind == .floor }.count, 1, "下限只能有一条")
-        XCTAssertEqual(rec.floorTodo?.id, b.id, "后设的生效，前一条降级")
-
-        rec.setKind(.mit, for: c.id)
-        XCTAssertEqual(rec.todos.filter { $0.kind == .mit }.count, 1, "最重要只能有一条")
-    }
-
-    func testNormalizeRepairsDuplicateKinds() {
-        var rec = DayRecord(date: "2026-08-31")
-        // 模拟外部损坏的数据：两条下限
-        rec.todos = [Todo(text: "A", kind: .floor), Todo(text: "B", kind: .floor)]
+        rec.floor.text = "今天必须在 23:00 前睡觉"
+        rec.floor.status = .done
+        rec.todos = [Todo(text: "工作事项", order: 0)]
         rec.normalize()
-        XCTAssertEqual(rec.todos.filter { $0.kind == .floor }.count, 1)
-        XCTAssertEqual(rec.todos.map(\.order), [0, 1])
-    }
 
-    func testStatusIsDerivedNotDuplicated() {
-        // 双重事实源的回归测试：DaySummary 不得再持有 floorStatus。
-        var rec = DayRecord(date: "2026-08-31")
-        var t = Todo(text: "下限", kind: .floor)
-        t.status = .done
-        rec.todos = [t]
         XCTAssertEqual(rec.floorStatus, .done)
-        XCTAssertEqual(rec.mitStatus, .notRecorded, "没有 MIT 时应为未记录，而不是失败")
+        XCTAssertEqual(rec.todos.count, 1, "下限不该占用 TODO 的位置")
+        XCTAssertEqual(rec.todos.first?.text, "工作事项")
     }
 
+    /// 最重要 = 列表第一条。顺序即优先级，不再单独打标记。
+    func testMostImportantIsTheFirstTodo() {
+        var rec = DayRecord(date: "2026-08-31")
+        rec.todos = [Todo(text: "第一", order: 0), Todo(text: "第二", order: 1)]
+        XCTAssertEqual(rec.mitTodo?.text, "第一")
+
+        rec.todos[0].status = .done
+        XCTAssertEqual(rec.mitStatus, .done)
+    }
+
+    func testMitStatusIsNotRecordedWhenNoTodos() {
+        let rec = DayRecord(date: "2026-08-31")
+        XCTAssertEqual(rec.mitStatus, .notRecorded, "没有 TODO 时应为未记录，而不是失败")
+        XCTAssertEqual(rec.floorStatus, .notRecorded)
+    }
+
+    /// 拖拽改顺序 = 改优先级，并且立刻反映到「最重要」。
+    func testMovingTodoChangesPriorityAndMIT() {
+        var rec = DayRecord(date: "2026-08-31")
+        rec.todos = [Todo(text: "A", order: 0), Todo(text: "B", order: 1), Todo(text: "C", order: 2)]
+
+        rec.moveTodos(fromOffsets: IndexSet(integer: 2), toOffset: 0)   // 把 C 拖到最前
+        rec.normalize()
+
+        XCTAssertEqual(rec.orderedTodos.map(\.text), ["C", "A", "B"])
+        XCTAssertEqual(rec.mitTodo?.text, "C", "拖到第一位就是今天的最重要")
+        XCTAssertEqual(rec.orderedTodos.map(\.order), [0, 1, 2], "order 应被重新编号")
+    }
+
+    func testNormalizeRenumbersOrder() {
+        var rec = DayRecord(date: "2026-08-31")
+        rec.todos = [Todo(text: "A", order: 7), Todo(text: "B", order: 3)]
+        rec.normalize()
+        XCTAssertEqual(rec.orderedTodos.map(\.text), ["B", "A"])
+        XCTAssertEqual(rec.orderedTodos.map(\.order), [0, 1])
+    }
+
+    /// 挂件顺序 = 优先级顺序。
     func testWidgetTodoOrdering() {
         var rec = DayRecord(date: "2026-08-31")
         rec.todos = [
-            Todo(text: "普通1", kind: .normal, order: 0),
-            Todo(text: "最重要", kind: .mit, order: 1),
-            Todo(text: "下限", kind: .floor, order: 2),
-            Todo(text: "普通2", kind: .normal, order: 3)
+            Todo(text: "第三", order: 2),
+            Todo(text: "第一", order: 0),
+            Todo(text: "第二", order: 1)
         ]
-        XCTAssertEqual(rec.widgetTodos.prefix(3).map(\.text), ["下限", "最重要", "普通1"])
+        XCTAssertEqual(rec.widgetTodos.map(\.text), ["第一", "第二", "第三"])
     }
 
     func testClarityEntryIncompleteWithoutFirstStep() {
