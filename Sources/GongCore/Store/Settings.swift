@@ -54,6 +54,7 @@ struct AppSettings: Codable, Sendable, Hashable {
     /// 想跟随系统或用英文，在设置里选即可。
     var language: LangPreference = .zh
     var appearance: AppearancePreference = .system
+    var theme: ThemePalette = .structural
 
     struct WidgetFrame: Codable, Sendable, Hashable {
         var x: Double, y: Double, width: Double, height: Double

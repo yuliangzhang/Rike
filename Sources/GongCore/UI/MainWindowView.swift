@@ -11,6 +11,7 @@ struct MainWindowView: View {
     var onMonitoringChange: (Bool) -> Void
     var onAppearanceChange: (AppearancePreference) -> Void
     var onLanguageChange: (LangPreference) -> Void
+    var onThemeChange: (ThemePalette) -> Void
 
     @State private var tab: Tab = .gong
 
@@ -59,7 +60,8 @@ struct MainWindowView: View {
                              onWidgetVisibilityChange: onWidgetVisibilityChange,
                              onMonitoringChange: onMonitoringChange,
                              onAppearanceChange: onAppearanceChange,
-                             onLanguageChange: onLanguageChange)
+                             onLanguageChange: onLanguageChange,
+                             onThemeChange: onThemeChange)
             }
         }
         .frame(minWidth: 940, minHeight: 680)

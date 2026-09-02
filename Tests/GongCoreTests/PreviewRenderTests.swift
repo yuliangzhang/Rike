@@ -95,6 +95,22 @@ final class PreviewRenderTests: XCTestCase {
         UILang.set(.zh)
     }
 
+    /// 四套主题 × 明暗，各渲一张。既是冒烟测试，也是我自己看成品的唯一途径。
+    func testRendersAllThemes() {
+        let (day, settings, _, _) = sampleStores()
+        UILang.set(.zh)
+        for t in ThemePalette.allCases {
+            activePalette = t
+            for dark in [false, true] {
+                render(GongTableView(store: day, settings: settings).tableContent
+                            .background(Theme.inset),
+                       width: 980, height: 1180, dark: dark,
+                       name: "theme-\(t.rawValue)-\(dark ? "dark" : "light")")
+            }
+        }
+        activePalette = .structural
+    }
+
     func testRendersWidget() {
         let (day, settings, monitor, breaker) = sampleStores()
         for dark in [false, true] {
@@ -115,7 +131,7 @@ final class PreviewRenderTests: XCTestCase {
             render(SettingsView(settings: settings, store: day,
                                 onWidgetModeChange: { _ in }, onWidgetVisibilityChange: { _ in },
                                 onMonitoringChange: { _ in }, onAppearanceChange: { _ in },
-                                onLanguageChange: { _ in }).pageContent.background(Theme.inset),
+                                onLanguageChange: { _ in }, onThemeChange: { _ in }).pageContent.background(Theme.inset),
                    width: 980, height: 1250, dark: dark, name: "settings-\(dark ? "dark" : "light")")
         }
     }

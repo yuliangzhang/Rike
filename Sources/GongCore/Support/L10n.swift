@@ -108,7 +108,9 @@ enum S: CaseIterable {
     case setBreaker, setBreakerEnable, setBreakerThreshold, setMinutesCount, setSnooze, setBreakerBody
     case setCategories, setCategoriesBody, setCategoriesEmpty
     case setSystem, setLaunchAtLogin, setLoginFailed, setDataLocation
-    case setAppearanceTitle, setLanguage, setAppearance
+    case setAppearanceTitle, setLanguage, setAppearance, setTheme
+    case themeStructural, themeStructuralNote, themePaper, themePaperNote
+    case themeGraphite, themeGraphiteNote, themePine, themePineNote
     case optSystem, optZh, optEn, optLight, optDark
 
     // 菜单栏
@@ -399,6 +401,19 @@ extension S {
         case .setAppearanceTitle: return ("外观与语言", "Appearance & language")
         case .setLanguage:      return ("语言", "Language")
         case .setAppearance:    return ("外观", "Appearance")
+        case .setTheme:         return ("主题", "Theme")
+        case .themeStructural:     return ("工务", "Structural")
+        case .themeStructuralNote: return ("钢蓝配墨绿，中性偏冷。工程图纸式的克制。",
+                                          "Steel blue and deep teal on a cool neutral. The restraint of a drawing.")
+        case .themePaper:          return ("宣纸", "Rice Paper")
+        case .themePaperNote:      return ("暖纸底、墨、朱砂、竹青。长时间书写不刺眼。",
+                                          "Warm paper, ink, cinnabar, bamboo green. Easy on the eyes for long writing.")
+        case .themeGraphite:       return ("石墨", "Graphite")
+        case .themeGraphiteNote:   return ("近乎单色，只留一点琥珀。计划与实际靠虚线／实心区分，不靠色相。",
+                                          "Near-monochrome with a single amber. Plan and actual are told apart by dashed vs solid, not by hue.")
+        case .themePine:           return ("松墨", "Pine Ink")
+        case .themePineNote:       return ("深绿偏蓝，安静。夜里久看不累。",
+                                          "Blue-leaning deep green. Quiet; holds up over a long night.")
         case .optSystem: return ("跟随系统", "System")
         case .optZh:     return ("中文", "中文")
         case .optEn:     return ("English", "English")

@@ -24,6 +24,7 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func start() async {
         await settingsStore.load()
+        activePalette = settingsStore.settings.theme
         applyAppearance(settingsStore.settings.appearance)
         dayStore.settingsProvider = { [settingsStore] in settingsStore.settings }
         monitor.settingsProvider = { [settingsStore] in settingsStore.settings }
@@ -182,6 +183,22 @@ final class AppCoordinator: NSObject, ObservableObject {
         mainWindow?.title = L(.appName)
     }
 
+    /// 切主题。Theme 的颜色都是计算属性，读的是 `activePalette`；
+    /// 改完必须**强制重绘**——AppKit 会缓存已经解析过的动态色，
+    /// 光改全局变量的话，已经画出来的部分不会自己更新。
+    func applyTheme(_ t: ThemePalette) {
+        activePalette = t
+        forceRedrawAllWindows()
+    }
+
+    private func forceRedrawAllWindows() {
+        for w in NSApp.windows {
+            w.contentView?.needsDisplay = true
+            w.contentView?.setNeedsDisplay(w.contentView?.bounds ?? .zero)
+            w.viewsNeedDisplay = true
+        }
+    }
+
     /// 应用外观偏好。改 NSApp.appearance 后，Theme 里所有动态色会一起解析成对应外观。
     ///
     /// 桌面挂件的 NSPanel 没有自己设 appearance，会继承 NSApp 的；
@@ -317,7 +334,8 @@ final class AppCoordinator: NSObject, ObservableObject {
                 onWidgetVisibilityChange: { [weak self] v in self?.setWidgetVisible(v) },
                 onMonitoringChange: { [weak self] on in self?.setMonitoring(on) },
                 onAppearanceChange: { [weak self] p in self?.applyAppearance(p) },
-                onLanguageChange: { [weak self] _ in self?.applyLanguage() })
+                onLanguageChange: { [weak self] _ in self?.applyLanguage() },
+                onThemeChange: { [weak self] t in self?.applyTheme(t) })
 
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable],

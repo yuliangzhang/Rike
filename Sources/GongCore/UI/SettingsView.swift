@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var loginItemError: String?
     var onAppearanceChange: (AppearancePreference) -> Void
     var onLanguageChange: (LangPreference) -> Void
+    var onThemeChange: (ThemePalette) -> Void
 
     private var s: Binding<AppSettings> { $settings.settings }
 
@@ -51,6 +52,19 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented).frame(maxWidth: 340)
 
+            Divider().overlay(Theme.rule)
+
+            MicroLabel(text: L(.setTheme))
+            // 主题只改字与色，**不动工字表的结构**。
+            // 每个选项直接给一条真实色带，不用点进去才知道长什么样。
+            VStack(spacing: 6) {
+                ForEach(ThemePalette.allCases, id: \.self) { t in
+                    themeRow(t)
+                }
+            }
+
+            Divider().overlay(Theme.rule)
+
             Picker(L(.setAppearance), selection: Binding(
                 get: { settings.settings.appearance },
                 set: { p in
@@ -63,6 +77,62 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented).frame(maxWidth: 340)
         }
+    }
+
+    /// 一行主题：色带 + 名字 + 一句说明。整行可点。
+    private func themeRow(_ t: ThemePalette) -> some View {
+        let selected = settings.settings.theme == t
+        return Button {
+            settings.settings.theme = t
+            onThemeChange(t)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(selected ? Theme.plan : Theme.faint)
+                    .padding(.top, 1)
+
+                swatch(t)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L(t.displayName))
+                        .font(Theme.ui(Theme.Size.body, .semibold))
+                        .foregroundStyle(Theme.ink)
+                    Text(L(t.note))
+                        .font(Theme.ui(Theme.Size.label))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(selected ? Theme.plan.opacity(0.08) : Color.clear)
+        .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall)
+                    .strokeBorder(selected ? Theme.plan.opacity(0.5) : Theme.rule))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
+    }
+
+    /// 该主题在**当前外观**下的真实取色，按工字表里的用途排：
+    /// 面 / 横梁 / 计划 / 实际 / 标记。
+    private func swatch(_ t: ThemePalette) -> some View {
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let k = dark ? t.palette.dark : t.palette.light
+        func c(_ v: UInt32) -> Color {
+            Color(red: Double((v >> 16) & 0xFF) / 255,
+                  green: Double((v >> 8) & 0xFF) / 255,
+                  blue: Double(v & 0xFF) / 255)
+        }
+        return HStack(spacing: 0) {
+            ForEach(Array([k.surface, k.beam, k.plan, k.actual, k.mark].enumerated()),
+                    id: \.offset) { _, v in
+                Rectangle().fill(c(v)).frame(width: 15, height: 26)
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.rule))
+        .clipShape(RoundedRectangle(cornerRadius: 3))
     }
 
     // MARK: 导出
