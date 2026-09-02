@@ -56,6 +56,7 @@ enum S: CaseIterable {
     case bandTodo, bandSummary, todoPlaceholder
     case kindFloorMenu, kindMitMenu, kindNormalMenu, delete, today
     case pickDateHelp, prevDayHelp, nextDayHelp
+    case exportThisDay, exportThisDayHelp
     case floorPlaceholder, todoPriorityHint, todoDragHelp
     case colPlan, colActual, colTotal, rangeSep, blockContent
     case addPlan, addActual, fillFromMonitor, fillFromMonitorHelp
@@ -164,6 +165,10 @@ extension S {
         case .todoDragHelp:   return ("拖动这里调整优先级", "Drag here to reorder")
         case .todoPriorityHint:
             return ("按重要性从高到低排，可拖动调整", "Most important first — drag to reorder")
+        case .exportThisDay:  return ("导出", "Export")
+        case .exportThisDayHelp:
+            return ("把当前这一天导出成 %@，存到 %@　⌘E",
+                    "Export the day shown here as %@, into %@　⌘E")
         case .prevDayHelp:    return ("前一天　⌘←", "Previous day　⌘←")
         case .nextDayHelp:    return ("后一天　⌘→", "Next day　⌘→")
         case .colPlan:        return ("计划", "Plan")

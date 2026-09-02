@@ -35,12 +35,27 @@ enum GongPaths {
             .appendingPathComponent("daily", isDirectory: true)
     }
 
+    /// 导出文件的基名：`2026-08-31-daily-record`。
+    ///
+    /// 用户定的格式。带横杠的日期在 Finder 里按名字排序就是按时间排序，
+    /// 而且一眼看得出是哪天的——比 `20260831` 好认。
+    /// **三处（正常导出／冲突文件／带序号的冲突文件）都从这里取**，
+    /// 各自拼字符串迟早会漂。
+    static func exportBaseName(dayKey: String) -> String {
+        "\(dayKey)-daily-record"
+    }
+
     static func exportFile(in directory: URL, dayKey: String) -> URL {
-        directory.appendingPathComponent("\(GongTime.compactKey(dayKey)).md")
+        directory.appendingPathComponent("\(exportBaseName(dayKey: dayKey)).md")
     }
 
     static func conflictFile(in directory: URL, dayKey: String) -> URL {
-        directory.appendingPathComponent("\(GongTime.compactKey(dayKey)).gong-conflict.md")
+        directory.appendingPathComponent("\(exportBaseName(dayKey: dayKey)).gong-conflict.md")
+    }
+
+    static func conflictFile(in directory: URL, dayKey: String, index: Int) -> URL {
+        directory.appendingPathComponent(
+            "\(exportBaseName(dayKey: dayKey)).gong-conflict-\(index).md")
     }
 
     static var allDirectories: [URL] { [root, daysDir, eventsDir, usageDir] }

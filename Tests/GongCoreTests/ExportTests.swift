@@ -27,7 +27,9 @@ final class ExportSafetyTests: XCTestCase {
         return r
     }
 
-    private var targetURL: URL { tmpDir.appendingPathComponent("20260831.md") }
+    /// 从 GongPaths 取，不要在测试里复述文件名格式——
+    /// 格式一改，硬编码的测试就会在**错误的路径**上摆好道具，然后测了个寂寞。
+    private var targetURL: URL { GongPaths.exportFile(in: tmpDir, dayKey: "2026-08-31") }
 
     // MARK: 1. 首次导出：独占创建
 
@@ -168,6 +170,29 @@ final class ExportSafetyTests: XCTestCase {
         XCTAssertFalse(text.contains("！"))
     }
 
+    /// 导出文件名的格式（用户指定）。
+    /// 带横杠的日期在 Finder 里按名字排序就是按时间排序，也一眼看得出是哪天的。
+    func testExportFileNameFormat() {
+        let dir = URL(fileURLWithPath: "/tmp/x", isDirectory: true)
+        XCTAssertEqual(GongPaths.exportFile(in: dir, dayKey: "2026-08-31").lastPathComponent,
+                       "2026-08-31-daily-record.md")
+        XCTAssertEqual(GongPaths.conflictFile(in: dir, dayKey: "2026-08-31").lastPathComponent,
+                       "2026-08-31-daily-record.gong-conflict.md")
+        XCTAssertEqual(GongPaths.conflictFile(in: dir, dayKey: "2026-08-31", index: 2).lastPathComponent,
+                       "2026-08-31-daily-record.gong-conflict-2.md")
+    }
+
+    /// 导出的永远是**当前这一天**，文件名跟着界面日期走。
+    func testExportUsesTheRecordsOwnDate() async throws {
+        var rec = DayRecord(date: "2026-09-15")
+        rec.summary.touched = "九月十五号写的"
+        let (outcome, _) = await Exporter.shared.export(
+            record: rec, usage: nil, settings: makeSettings())
+        guard case .created(let url) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(url.lastPathComponent, "2026-09-15-daily-record.md")
+        XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains("九月十五号写的"))
+    }
+
     /// 下限单独成节，且不占用 TODO 的位置。
     func testFloorExportsAsItsOwnSection() {
         var rec = makeRecord()
@@ -244,7 +269,7 @@ final class ExportLanguageSwitchTests: XCTestCase {
         return r
     }
 
-    private var target: URL { tmpDir.appendingPathComponent("20260831.md") }
+    private var target: URL { GongPaths.exportFile(in: tmpDir, dayKey: "2026-08-31") }
 
     func testSwitchingLanguageUpdatesInPlaceWithoutConflict() async throws {
         var rec = record()

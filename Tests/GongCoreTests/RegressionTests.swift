@@ -162,7 +162,7 @@ final class ExportRegressionTests: XCTestCase {
         let (_, s1) = await Exporter.shared.export(record: rec, usage: nil, settings: settings)
         rec.exportState = s1
 
-        let target = tmp.appendingPathComponent("20260831.md")
+        let target = GongPaths.exportFile(in: tmp, dayKey: "2026-08-31")
         try (MarkdownRenderer.marker + "\n# 外部改的，但保留了标记\n")
             .write(to: target, atomically: true, encoding: .utf8)
 

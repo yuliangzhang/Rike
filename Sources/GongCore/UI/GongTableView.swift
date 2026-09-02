@@ -207,6 +207,10 @@ struct GongTableView: View {
     /// 三条路都给：箭头（相邻一天）、点日期开日历（任意一天）、键盘（⌘← ⌘→ ⌘T）。
     private var dateNav: some View {
         HStack(spacing: 6) {
+            exportButton
+            Rectangle().fill(Theme.rule).frame(width: 1, height: 18)
+                .padding(.horizontal, 4)
+
             navArrow("chevron.left", -1)
 
             // 点日期 → 日历弹出，任意一天直达
@@ -243,6 +247,32 @@ struct GongTableView: View {
                 .disabled(isToday)
                 .keyboardShortcut("t", modifiers: .command)
         }
+    }
+
+    /// 导出当前界面这一天。
+    ///
+    /// 放在日期导航的左边、用一条竖线隔开：它导的**就是右边显示的那一天**，
+    /// 挨着放这层关系不用解释。翻到 08-31 点它，出来的就是 08-31 的文件。
+    ///
+    /// 手动而非自动是用户定的。理由仍然成立：每次写盘都有一个
+    /// 「外部进程可能同时在改同一个文件」的暴露窗口，少写就少暴露。
+    private var exportButton: some View {
+        Button { Task { await store.exportNow() } } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11, weight: .medium))
+                Text(L(.exportThisDay))
+                    .font(Theme.ui(Theme.Size.meta, .medium))
+            }
+            .foregroundStyle(Theme.plan)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.plan.opacity(0.4)))
+        .keyboardShortcut("e", modifiers: .command)
+        .help(L(.exportThisDayHelp, GongPaths.exportBaseName(dayKey: store.record.key.date) + ".md",
+                settings.settings.exportDirectoryPath))
     }
 
     /// 箭头按钮。给足点击面积并显式声明 contentShape ——

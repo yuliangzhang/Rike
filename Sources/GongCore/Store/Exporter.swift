@@ -145,7 +145,7 @@ actor Exporter {
         for n in 0..<100 {
             let url: URL = n == 0
                 ? base
-                : dir.appendingPathComponent("\(GongTime.compactKey(dayKey)).gong-conflict-\(n).md")
+                : GongPaths.conflictFile(in: dir, dayKey: dayKey, index: n)
             do {
                 if try await store.createExclusive(text, at: url) {
                     // 注意：不更新 exportState —— 我们并没有写成目标文件。
