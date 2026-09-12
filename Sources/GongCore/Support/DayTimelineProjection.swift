@@ -116,8 +116,10 @@ enum DayTimelineProjection {
         // MARK: 实际块：instant → elapsed，按当日边界裁剪
         var outOfRange: [OutOfRangeBlock] = []
         let actualSegs: [TimelineSegment] = record.actual.compactMap { blk in
-            let rawStart = blk.start
-            let rawEnd = max(blk.start, blk.end)
+            // 时间还没填满的块不上时间带。它在「实际」列里看得见，
+            // 只是还没有位置可画 —— 这不是丢数据，是它本来就还没有时刻。
+            guard let rawStart = blk.start, let blkEnd = blk.end else { return nil }
+            let rawEnd = max(rawStart, blkEnd)
             guard rawEnd > dayStart, rawStart < dayEnd else {
                 // 完全在当日投影之外 —— 记下来，不静默丢弃
                 var ownCal = Calendar(identifier: .gregorian)

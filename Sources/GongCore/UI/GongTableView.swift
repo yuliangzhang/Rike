@@ -13,12 +13,13 @@ struct GongTableView: View {
     @ObservedObject var settings: SettingsStore
 
     @State private var newTodoText = ""
+    @State private var newWinText = ""
     @State private var showDatePicker = false
     @State private var draggingTodo: UUID?
     @State private var dropTarget: UUID?
     @FocusState private var focusedField: Field?
 
-    private enum Field: Hashable { case newTodo, todo(UUID), touched, freeText }
+    private enum Field: Hashable { case newTodo, newWin, todo(UUID), touched, freeText }
 
     var body: some View {
         ScrollView { tableContent }
@@ -257,7 +258,7 @@ struct GongTableView: View {
     /// 手动而非自动是用户定的。理由仍然成立：每次写盘都有一个
     /// 「外部进程可能同时在改同一个文件」的暴露窗口，少写就少暴露。
     private var exportButton: some View {
-        Button { Task { await store.exportNow() } } label: {
+        Button { Task { await store.exportNow(announcing: true) } } label: {
             HStack(spacing: 5) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 11, weight: .medium))
@@ -440,16 +441,22 @@ struct GongTableView: View {
 
             ForEach(store.record.actual) { blk in
                 HStack(spacing: 8) {
-                    // 时间可改：我们并不是一直坐在电脑前，监控填进来的区间和
-                    // 「＋新增」给的默认一小时都只是起点，必须让人改成事实。
-                    timeField(text: GongTime.formatMinutes(blk.startWallClockMinutes), style: .actual,
-                              id: ctx("actualStart", blk.id.uuidString)) { m in
-                        updateActual(blk.id) { $0.setStartWallClock(m) }
+                    // 时间可空、可改。监控填进来的区间只是线索，人回来补录时
+                    // 说了算的是他自己的记忆；手工新增的那条干脆什么都不填。
+                    actualTimeField(minutes: blk.startWallClockMinutes,
+                                    id: ctx("actualStart", blk.id.uuidString)) { m in
+                        updateActual(blk.id) { blk in
+                            if let m { blk.setStartWallClock(m, anchoredOn: dayAnchor) }
+                            else { blk.clearStartWallClock() }
+                        }
                     }
                     rangeSeparator
-                    timeField(text: GongTime.formatMinutes(blk.endWallClockMinutes), style: .actual,
-                              id: ctx("actualEnd", blk.id.uuidString)) { m in
-                        updateActual(blk.id) { $0.setEndWallClock(m) }
+                    actualTimeField(minutes: blk.endWallClockMinutes,
+                                    id: ctx("actualEnd", blk.id.uuidString)) { m in
+                        updateActual(blk.id) { blk in
+                            if let m { blk.setEndWallClock(m, anchoredOn: dayAnchor) }
+                            else { blk.clearEndWallClock() }
+                        }
                     }
                     if let tz = blk.foreignTimeZoneLabel(
                         recordTimeZoneIdentifier: store.record.key.timeZoneIdentifier) {
@@ -503,12 +510,31 @@ struct GongTableView: View {
         .padding(.bottom, 4)
     }
 
+    /// 计划列的时间格。**行为与改动前逐字一致**：不可留空、不自动补冒号。
+    /// 计划是坐下来一次排好的意图，默认值（接着上一段往后一小时）在那里是对的。
     private func timeField(text: String, style: TimeEntryField.Style, id: String,
                            onCommit: @escaping (Int) -> Void) -> some View {
         // .id() 让换日时底层 NSTextField 连同未提交内容一起重建，
         // 杜绝 r3 那类「上一天的输入落进新一天」的缺陷。
-        TimeEntryField(initial: text, style: style, onCommit: onCommit).id(id)
+        TimeEntryField(initial: text, style: style) { m in
+            guard let m else { return }
+            onCommit(m)
+        }
+        .id(id)
     }
+
+    /// 实际列的时间格：可以是空的，也可以被清回空。
+    /// 空不是缺陷状态，是「这件事发生过，时间我还没填」——补录时它是常态。
+    private func actualTimeField(minutes: Int?, id: String,
+                                 onCommit: @escaping (Int?) -> Void) -> some View {
+        TimeEntryField(initial: minutes.map(GongTime.formatMinutes) ?? "",
+                       style: .actual, allowsBlank: true, onCommit: onCommit)
+            .id(id)
+    }
+
+    /// 这一天在记录所属时区里的起点。给「原本没有任何时刻」的实际块当锚，
+    /// 让 09:30 落在**这条记录的那一天**，而不是今天。
+    private var dayAnchor: Date? { store.record.key.dayInterval?.start }
 
     private func deleteButton(_ action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: "xmark").font(.system(size: 9)) }
@@ -527,11 +553,15 @@ struct GongTableView: View {
         }
     }
 
+    /// 新增一条空的「实际」。
+    ///
+    /// 以前这里替人填「现在起一小时」。但用这个应用的时候人往往**不在**做那件事——
+    /// 开完会回来补录、晚上回顾一整天，当前时刻和那件事发生的时刻毫无关系，
+    /// 猜出来的值几乎每次都得先删掉再重填，等于凭空多一道手续。
+    /// 空着反而诚实：时间还不知道，等他写。
     private func addActualManually() {
-        let now = Date()
         store.mutate { rec in
-            rec.actual.append(ActualBlock(start: now, end: now.addingTimeInterval(3600),
-                                          title: "", source: .manual))
+            rec.actual.append(ActualBlock(title: "", source: .manual))
         }
     }
 
@@ -557,8 +587,10 @@ struct GongTableView: View {
         }
         store.mutate { rec in
             for iv in merged {
-                let exists = rec.actual.contains {
-                    $0.source == .monitor && abs($0.start.timeIntervalSince(iv.start)) < 60
+                let exists = rec.actual.contains { blk in
+                    // 还没填时间的块没有开始时刻，谈不上和监控区间重复
+                    guard blk.source == .monitor, let s = blk.start else { return false }
+                    return abs(s.timeIntervalSince(iv.start)) < 60
                 }
                 guard !exists else { continue }
                 // 用区间**自己**的时区，不是记录的时区
@@ -607,18 +639,8 @@ struct GongTableView: View {
             HStack(alignment: .firstTextBaseline) {
                 MicroLabel(text: L(.summaryWins))
                 Text(L(.summaryWinsHint))
-                    .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.faint)
+                    .font(Theme.ui(Theme.Size.label)).foregroundStyle(Theme.muted)
                 Spacer()
-                Button(L(.summaryWinsAdd)) {
-                    store.mutate { $0.summary.wins.append(WinEntry()) }
-                }
-                .buttonStyle(.plain).font(Theme.ui(Theme.Size.label, .medium))
-                .foregroundStyle(Theme.muted)
-            }
-            if store.record.summary.wins.isEmpty {
-                Text(L(.summaryWinsEmpty))
-                    .font(Theme.serif(Theme.Size.body)).foregroundStyle(Theme.faint)
-                    .padding(.vertical, 3)
             }
             ForEach(Array(store.record.summary.wins.enumerated()), id: \.element.id) { idx, win in
                 HStack(alignment: .top, spacing: 10) {
@@ -642,7 +664,31 @@ struct GongTableView: View {
                     .buttonStyle(.plain).foregroundStyle(Theme.faint)
                 }
             }
+
+            // 和今日 TODO 同一套生成方式：底部常驻一行输入，回车落一条、光标留在原地继续下一条。
+            // 「先点按钮生成空行，再去空行里打字」多一次手部往返，记三五条就明显了。
+            HStack(alignment: .top, spacing: 10) {
+                Text("\(store.record.summary.wins.count + 1)")
+                    .font(Theme.mono(Theme.Size.label))
+                    .foregroundStyle(Theme.faint)
+                    .frame(width: 18, alignment: .trailing)
+                    .padding(.top, 2)
+                TextField(L(.summaryWinsPlaceholder), text: $newWinText)
+                    .textFieldStyle(.plain)
+                    .font(Theme.serif(Theme.Size.bodyLarge))
+                    .focused($focusedField, equals: .newWin)
+                    .onSubmit(addWin)
+            }
+            .padding(.top, 2)
         }
+    }
+
+    private func addWin() {
+        let t = newWinText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        store.mutate { $0.summary.wins.append(WinEntry(text: t)) }
+        newWinText = ""
+        focusedField = .newWin          // 焦点留在输入行，直接接着记下一条
     }
 
     /// 中性措辞：「已完成 / 未记录」，不是「✓ 达成 / ✗ 未达成」。
@@ -677,11 +723,7 @@ struct GongTableView: View {
         VStack(alignment: .leading, spacing: 6) {
             MicroLabel(text: label)
             BufferedTextEditor(contextID: ctx("summary", label), value: value,
-                               hint: hint,
-                               font: serif ? Theme.serif(Theme.Size.bodyLarge)
-                                           : Theme.ui(Theme.Size.body),
-                               lineSpacing: serif ? 6 : 2,
-                               onChange: onChange)
+                               hint: hint, serif: serif, onChange: onChange)
         }
     }
 
@@ -779,13 +821,19 @@ struct TimeEntryField: View {
 
     let initial: String
     var style: Style = .plan
-    let onCommit: (Int) -> Void
+    /// 允许留空／清空。只有「实际」列开放：那一列的时间是事后补的，
+    /// 「还没填」是真实状态。计划列不开——那里留空没有意义，也不该改动它原有的行为。
+    var allowsBlank: Bool = false
+    /// nil 表示「清空这一格」，只可能在 `allowsBlank` 时发生。
+    let onCommit: (Int?) -> Void
 
     @State private var editing = false
 
     var body: some View {
         SelectAllOnClickField(initial: initial,
                               color: style == .plan ? Theme.nsPlan : Theme.nsActual,
+                              placeholder: allowsBlank ? L(.timeBlank) : "",
+                              allowsBlank: allowsBlank,
                               editing: $editing,
                               onCommit: onCommit)
             .frame(width: 52, height: 17)
@@ -812,7 +860,18 @@ struct TimeEntryField: View {
     /// 全角冒号归一成半角——中文输入法下敲出来的是全角。
     ///
     /// **必须幂等**：`controlTextDidChange` 里回写会再触发一次通知，不幂等就是无限循环。
-    static func sanitize(_ raw: String) -> String {
+    ///
+    /// `autoColon`（仅「实际」列）：敲满 4 个数字就地补上冒号，`1430` → `14:30`，
+    /// 让人边打边看见数字落在了哪一格。
+    ///
+    /// **为什么偏偏是第 4 个数字**：3 个数字是歧义的——`143` 既可能是 `1:43`
+    /// 也可能是 `14:3` 打了一半，这时插冒号，下一个数字就落错格子。
+    /// 4 个数字只有 HHMM 一种读法，补冒号是确定的。
+    /// 而 `930` 这类 3 位输入交给提交时的 `parseMinutes`（它读作 9:30），照样对。
+    ///
+    /// 同理，字符串里已经有冒号就不再插——否则退格删掉冒号会被立刻补回来，
+    /// 人就永远退不回去了。
+    static func sanitize(_ raw: String, autoColon: Bool = false) -> String {
         var out = ""
         var sawColon = false
         for ch in raw {
@@ -824,7 +883,8 @@ struct TimeEntryField: View {
                 sawColon = true
             }
         }
-        return out
+        guard autoColon, !sawColon, out.count == 4 else { return out }
+        return "\(out.prefix(2)):\(out.suffix(2))"
     }
 }
 
@@ -864,8 +924,16 @@ final class ClickSelectsAllTextField: NSTextField {
 private struct SelectAllOnClickField: NSViewRepresentable {
     let initial: String
     let color: NSColor
+    let placeholder: String
+    /// 「实际」列的输入行为开关。
+    ///
+    /// 可留空和「敲满 4 个数字自动补冒号」是**同一个决定**的两面：实际列的时间
+    /// 是人从零敲进来的，所以既要允许还没敲、也要在敲的过程中给回位反馈；
+    /// 计划列的时间是排计划时一次性带出来的默认值，两样都不需要，也不该动。
+    let allowsBlank: Bool
     @Binding var editing: Bool
-    let onCommit: (Int) -> Void
+    /// nil = 清空这一格。
+    let onCommit: (Int?) -> Void
 
     func makeNSView(context: Context) -> ClickSelectsAllTextField {
         let tf = ClickSelectsAllTextField()
@@ -878,6 +946,7 @@ private struct SelectAllOnClickField: NSViewRepresentable {
         tf.font = NSFont.monospacedDigitSystemFont(ofSize: Theme.Size.time, weight: .medium)
         tf.delegate = context.coordinator
         tf.stringValue = initial
+        tf.placeholderString = placeholder
         tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
         return tf
     }
@@ -885,6 +954,7 @@ private struct SelectAllOnClickField: NSViewRepresentable {
     func updateNSView(_ tf: ClickSelectsAllTextField, context: Context) {
         context.coordinator.parent = self
         tf.textColor = color
+        tf.placeholderString = placeholder
         // 外部值变化（切日期、从监控填充）只在没人正在编辑时回灌，
         // 否则会把正在输入的半截内容冲掉。
         if tf.currentEditor() == nil, tf.stringValue != initial {
@@ -902,7 +972,7 @@ private struct SelectAllOnClickField: NSViewRepresentable {
         /// 否则要等失焦才发现解析失败、整段被还原，白打一遍。
         func controlTextDidChange(_ note: Notification) {
             guard let tf = note.object as? NSTextField else { return }
-            let clean = TimeEntryField.sanitize(tf.stringValue)
+            let clean = TimeEntryField.sanitize(tf.stringValue, autoColon: parent.allowsBlank)
             guard clean != tf.stringValue else { return }
             // 回写会把光标顶到末尾。这里的输入都很短（≤5 字符），
             // 而且只有输入了非法字符才会走到这条路，可以接受。
@@ -930,6 +1000,19 @@ private struct SelectAllOnClickField: NSViewRepresentable {
 
         private func commit(_ tf: NSTextField?) {
             guard let tf else { return }
+
+            // 清空。只有实际列走得到这里——那一列「还没填时间」是真实状态，
+            // 必须有路回到它，否则手滑填错一次就再也改不回空白了。
+            if tf.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                guard parent.allowsBlank else {
+                    tf.stringValue = parent.initial
+                    return
+                }
+                guard !parent.initial.isEmpty else { return }   // 本来就空，没有变化可提交
+                parent.onCommit(nil)
+                return
+            }
+
             guard let m = GongTime.parseMinutes(tf.stringValue) else {
                 tf.stringValue = parent.initial              // 解析失败就还原，不静默吞掉
                 return

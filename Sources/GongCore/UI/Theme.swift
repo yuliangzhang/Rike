@@ -169,6 +169,11 @@ enum Theme {
     /// 工字的横梁。比普通分隔线重得多——结构要看得见。
     static var beam: Color { Color(nsColor: tok(\.beam)) }
 
+    // AppKit 版。走 NSTextView / NSTextField 的控件拿不到 SwiftUI 的 Color，
+    // 必须从同一张色板取值，否则换主题时这几个控件会留在旧颜色上。
+    static var nsInk2: NSColor  { tok(\.ink2) }
+    static var nsFaint: NSColor { tok(\.faint) }
+
     // 语义：意图 vs 事实
     static var nsPlan: NSColor   { tok(\.plan) }
     static var nsActual: NSColor { tok(\.actual) }
@@ -236,6 +241,21 @@ enum Theme {
             ? .custom("Songti SC", size: size).weight(weight)
             : .system(size: size, weight: weight, design: .serif)
     }
+
+    /// `serif(_:)` 的 AppKit 版，选字逻辑必须和它**逐条对应**——
+    /// 手记那一横里，SwiftUI 画的提示文字和 NSTextView 画的正文叠在同一个框里，
+    /// 两边字体不一致，占位提示和真正打出来的字就会错位。
+    @MainActor
+    static func nsSerif(_ size: CGFloat) -> NSFont {
+        if UILang.current == .zh, let songti = NSFont(name: "Songti SC", size: size) {
+            return songti
+        }
+        let system = NSFont.systemFont(ofSize: size)
+        guard let descriptor = system.fontDescriptor.withDesign(.serif) else { return system }
+        return NSFont(descriptor: descriptor, size: size) ?? system
+    }
+
+    static func nsUI(_ size: CGFloat) -> NSFont { NSFont.systemFont(ofSize: size) }
 
     // 兼容旧名
     static let monoBody = Font.system(.body, design: .monospaced)

@@ -71,7 +71,7 @@ enum MarkdownRenderer {
         if record.actual.isEmpty {
             out.append("- \(notRecorded)")
         } else {
-            for b in record.actual.sorted(by: { $0.start < $1.start }) {
+            for b in ActualBlock.timeOrdered(record.actual) {
                 // 按块自身时区渲染，跨时区时带上时区标识 —— 否则导出的墙钟时间是错的
                 let label = b.rangeLabel(recordTimeZoneIdentifier: record.key.timeZoneIdentifier,
                                          lang: lang)

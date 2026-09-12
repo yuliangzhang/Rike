@@ -50,7 +50,8 @@ final class L10nTests: XCTestCase {
     /// 中英写成同一句，通常是复制粘贴时忘了翻。
     /// 少数确实相同的（语言自称、纯符号）在这里显式豁免。
     func testTranslationsDiffer() {
-        let allowedSame: Set<String> = ["optZh", "optEn"]
+        // timeBlank 是「等你填」的空格子（__:__），不是词，两种语言本来就同形。
+        let allowedSame: Set<String> = ["optZh", "optEn", "timeBlank"]
         for k in S.allCases {
             let (zh, en) = k.pair
             guard !allowedSame.contains("\(k)") else { continue }

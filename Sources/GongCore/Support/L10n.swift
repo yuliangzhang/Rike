@@ -57,12 +57,14 @@ enum S: CaseIterable {
     case kindFloorMenu, kindMitMenu, kindNormalMenu, delete, today
     case pickDateHelp, prevDayHelp, nextDayHelp
     case exportThisDay, exportThisDayHelp
+    case exportTitleDone, exportTitleNoChange, exportTitleAttention, exportTitleFailed
+    case exportLocation, exportGotIt, exportReveal
     case floorPlaceholder, todoPriorityHint, todoDragHelp
-    case colPlan, colActual, colTotal, rangeSep, blockContent
+    case colPlan, colActual, colTotal, rangeSep, blockContent, timeBlank
     case addPlan, addActual, fillFromMonitor, fillFromMonitorHelp
     case foreignTZHelp, tzNoteTitle, tzNoteBody, outOfRangeTitle, outOfRangeBody
     case summaryTouched, summaryTouchedHint, summaryNote, summaryNoteHint
-    case summaryWins, summaryWinsHint, summaryWinsAdd, summaryWinsEmpty, summaryWinsPlaceholder
+    case summaryWins, summaryWinsHint, summaryWinsPlaceholder
     case summaryTomorrow, summaryTomorrowHint
     case clarityTitle, clarityAdd, clarity01, clarity02, clarity03, clarity04
     case clarityDone, clarityUndone
@@ -166,6 +168,14 @@ extension S {
         case .todoPriorityHint:
             return ("按重要性从高到低排，可拖动调整", "Most important first — drag to reorder")
         case .exportThisDay:  return ("导出", "Export")
+        // 手动导出的回执弹窗。标题只说结论，细节放正文。
+        case .exportTitleDone:      return ("已导出", "Exported")
+        case .exportTitleNoChange:  return ("内容没有变化", "Nothing changed")
+        case .exportTitleAttention: return ("导出完成，但有一点要说明", "Exported, with a caveat")
+        case .exportTitleFailed:    return ("导出失败", "Export failed")
+        case .exportLocation:       return ("位置：%@", "Location: %@")
+        case .exportGotIt:          return ("知道了", "Got it")
+        case .exportReveal:         return ("在访达中显示", "Show in Finder")
         case .exportThisDayHelp:
             return ("把当前这一天导出成 %@，存到 %@　⌘E",
                     "Export the day shown here as %@, into %@　⌘E")
@@ -175,6 +185,9 @@ extension S {
         case .colActual:      return ("实际", "Actual")
         case .colTotal:       return ("共 %@", "%@ total")
         case .rangeSep:       return ("至", "–")
+        // 未填时间的占位。两种语言同形：它不是词，是一个「等你填」的空格子，
+        // 界面上的输入框和导出的 markdown 里长一个样，人才不用在两处各认一次。
+        case .timeBlank:      return ("__:__", "__:__")
         case .blockContent:   return ("内容", "Content")
         case .addPlan:        return ("＋ 新增计划", "＋ Add plan")
         case .addActual:      return ("＋ 新增", "＋ Add")
@@ -201,10 +214,9 @@ extension S {
                                          "The one thing that moved me today — good or bad. Be specific.")
         case .summaryWins:      return ("成功日记", "Wins")
         case .summaryWinsHint:  return ("3~5 条今天做成的小事", "3–5 small things you got done today")
-        case .summaryWinsAdd:   return ("＋ 记一条", "＋ Add one")
-        case .summaryWinsEmpty: return ("再小也算——寄出一封拖了很久的邮件、把一段代码删干净。",
-                                        "However small — sending that overdue email, deleting a messy function.")
-        case .summaryWinsPlaceholder: return ("今天我做成的一件小事", "One small thing I got done")
+        // 和今日 TODO 同一套写法：提示里就写清「回车确认」，因为输入行本身没有按钮可点。
+        case .summaryWinsPlaceholder: return ("今天做成的一件小事，回车确认",
+                                              "One small thing you got done, press return")
         case .summaryTomorrow:  return ("明天会更好", "Tomorrow, better")
         case .summaryTomorrowHint:
             return ("要调整什么，明天才会比今天顺——策略、安排、环境，写一条就够",

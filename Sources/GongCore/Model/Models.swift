@@ -193,15 +193,33 @@ struct PlannedBlock: Codable, Identifiable, Hashable, Sendable {
 /// 实际块：**已发生的瞬间**，可逆、可跨时区重算。
 struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     var id: UUID = UUID()
-    var start: Date
-    var end: Date
+    /// 起止时刻**可以为空**。
+    ///
+    /// 手工新增一条「实际」时不再替人猜一个「现在起一小时」——那个猜测几乎总是错的，
+    /// 人得先删掉再重填，等于多一道手续。空着表示「这件事发生过，但我还没填时间」，
+    /// 这是一个真实存在的中间状态，模型必须能表达它，而不是用一个假时间冒充。
+    ///
+    /// 两端独立可空：填了开始还没填结束，是正常的输入过程，不要替他把另一头补上。
+    /// 未填满的块**不参与任何时间计算**：时长按 0 计、不上时间带、排序沉底。
+    var start: Date?
+    var end: Date?
     /// 事件实际发生地的时区，仅作显示；投影一律按 DayKey 的时区。
     var timeZoneIdentifier: String = TimeZone.current.identifier
     var title: String = ""
     var source: BlockSource = .manual
 
-    var interval: DateInterval { DateInterval(start: start, end: max(start, end)) }
-    var durationSeconds: TimeInterval { max(0, end.timeIntervalSince(start)) }
+    /// 两端都填齐了才算一段真实区间。
+    var isTimed: Bool { start != nil && end != nil }
+
+    var interval: DateInterval? {
+        guard let s = start, let e = end else { return nil }
+        return DateInterval(start: s, end: max(s, e))
+    }
+    /// 未填满按 0 计。绝不拿半截时间估一个数字出来——列头的合计是要拿来看的。
+    var durationSeconds: TimeInterval {
+        guard let s = start, let e = end else { return 0 }
+        return max(0, e.timeIntervalSince(s))
+    }
     var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }
 
     /// 墙钟标签。**必须按这个块自己发生地的时区渲染**，不能用所属记录的时区——
@@ -211,8 +229,9 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     func rangeLabel(recordTimeZoneIdentifier: String, lang: Lang) -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
-        func hm(_ d: Date) -> String {
-            String(format: "%02d:%02d", cal.component(.hour, from: d), cal.component(.minute, from: d))
+        func hm(_ d: Date?) -> String {
+            guard let d else { return S.timeBlank.text(lang) }
+            return String(format: "%02d:%02d", cal.component(.hour, from: d), cal.component(.minute, from: d))
         }
         let base = "\(hm(start)) \(S.rangeSep.text(lang)) \(hm(end))"
         return timeZoneIdentifier == recordTimeZoneIdentifier
@@ -238,14 +257,15 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
         return c
     }
 
-    private func wallClockMinutes(_ d: Date) -> Int {
+    private func wallClockMinutes(_ d: Date?) -> Int? {
+        guard let d else { return nil }
         let c = ownCalendar
         return c.component(.hour, from: d) * 60 + c.component(.minute, from: d)
     }
 
-    /// 本块在自己时区里的墙钟分钟数，供编辑框显示。
-    var startWallClockMinutes: Int { wallClockMinutes(start) }
-    var endWallClockMinutes: Int { wallClockMinutes(end) }
+    /// 本块在自己时区里的墙钟分钟数，供编辑框显示。未填时为 nil，编辑框显示空白。
+    var startWallClockMinutes: Int? { wallClockMinutes(start) }
+    var endWallClockMinutes: Int? { wallClockMinutes(end) }
 
     /// 把墙钟分钟数解析成本块时区里的一个瞬间，锚定在 `anchor` 所在的那个日历日。
     /// 走 DateComponents 而不是 startOfDay + 秒偏移：DST 当天不是 1440 分钟，
@@ -270,28 +290,58 @@ struct ActualBlock: Codable, Identifiable, Hashable, Sendable {
     /// `comps.hour = 24` 会被 Calendar 滚到次日 00:00，整块静默跳到另一天。
     /// 这也与 `PlannedBlock.clamp` 的不对称约定保持一致：开始 `0..<1440`、
     /// 结束 `(start, 1440]`，两列的行为必须是同一套。
-    mutating func setStartWallClock(_ minutes: Int) {
+    mutating func setStartWallClock(_ minutes: Int, anchoredOn dayAnchor: Date? = nil) {
         let m = min(max(0, minutes), PlannedBlock.dayMinutes - 1)
-        guard let s = instant(wallClockMinutes: m, anchoredOn: start) else { return }
+        // 这一块自己还没有任何时刻时，得有人告诉它「这是哪一天」。
+        // 找不到锚就什么都不做 —— 宁可这次输入不生效，也不要凭 Date() 猜一天，
+        // 那会让在 09-05 的界面上补录的时间悄悄落到今天。
+        guard let anchor = start ?? end ?? dayAnchor,
+              let s = instant(wallClockMinutes: m, anchoredOn: anchor) else { return }
         let duration = durationSeconds
         start = s
-        if end <= start { end = start.addingTimeInterval(max(60, duration)) }
+        // 结束还空着就让它继续空着：只填了开始是正常的输入中途状态，
+        // 替他补一个 +1 分钟的结束，等于又回到了「先删掉系统猜的值」那套。
+        if let e = end, e <= s { end = s.addingTimeInterval(max(60, duration)) }
     }
 
     /// 改结束时刻。锚定在**开始所在的那一天**再向后归一化，
     /// 于是「23:00 至 01:00」（跨夜）和「23:00 至 23:30」都能按人的直觉落到正确的一天。
-    mutating func setEndWallClock(_ minutes: Int) {
-        guard let e = instant(wallClockMinutes: minutes, anchoredOn: start) else { return }
+    mutating func setEndWallClock(_ minutes: Int, anchoredOn dayAnchor: Date? = nil) {
+        guard let anchor = start ?? end ?? dayAnchor,
+              let e = instant(wallClockMinutes: minutes, anchoredOn: anchor) else { return }
         end = e
         normalizeEndForward()
     }
 
+    /// 把时间清回「未填」。有了空值这个状态，就必须有路回到它——
+    /// 否则一旦手滑填错，就再也不可能把这一格改回空白。
+    mutating func clearStartWallClock() { start = nil }
+    mutating func clearEndWallClock() { end = nil }
+
+    /// 按开始时刻排序，未填时间的沉底并保持彼此的输入顺序。
+    ///
+    /// 只此一处。界面排序（`DayRecord.normalize`）和导出排序必须是同一个函数，
+    /// 否则导出的顺序和屏幕上看到的不一样，而这种不一致要到看文件时才发现。
+    static func timeOrdered(_ blocks: [ActualBlock]) -> [ActualBlock] {
+        blocks.enumerated()
+            .sorted { a, b in
+                switch (a.element.start, b.element.start) {
+                case let (l?, r?): return l == r ? a.offset < b.offset : l < r
+                case (nil, _?):    return false
+                case (_?, nil):    return true
+                case (nil, nil):   return a.offset < b.offset
+                }
+            }
+            .map(\.element)
+    }
+
+    /// 跨夜归一：只在两端都有值时才有意义。
     private mutating func normalizeEndForward() {
-        guard end <= start else { return }
-        if let next = ownCalendar.date(byAdding: .day, value: 1, to: end), next > start {
+        guard let s = start, let e = end, e <= s else { return }
+        if let next = ownCalendar.date(byAdding: .day, value: 1, to: e), next > s {
             end = next
         } else {
-            end = start.addingTimeInterval(60)
+            end = s.addingTimeInterval(60)
         }
     }
 }
@@ -472,7 +522,10 @@ struct DayRecord: Codable, Identifiable, Hashable, Sendable {
             todos[i].kind = .normal      // 顺序即优先级之后，kind 不再承载语义
         }
         planned.sort { $0.startMinute < $1.startMinute }
-        actual.sort { $0.start < $1.start }
+        // 未填时间的块没有位置可排，一律沉到末尾，并保持它们**彼此**的输入顺序不变。
+        // 直接比较 Optional 会把 nil 排到最前，刚新增的空行就会跳到列首，
+        // 人正在那一行打字，行却动了。
+        actual = ActualBlock.timeOrdered(actual)
     }
 }
 

@@ -65,10 +65,10 @@ final class ActualBlockWallClockEditTests: XCTestCase {
         for m in stride(from: 0, through: 24 * 60, by: 37) {
             var b = block(10, 0, 11, 0)
             b.setStartWallClock(m)
-            XCTAssertGreaterThan(b.end, b.start, "开始改成 \(m) 分后结束不晚于开始")
+            XCTAssertGreaterThan(b.endValue, b.startValue, "开始改成 \(m) 分后结束不晚于开始")
             var c = block(10, 0, 11, 0)
             c.setEndWallClock(m)
-            XCTAssertGreaterThan(c.end, c.start, "结束改成 \(m) 分后不晚于开始")
+            XCTAssertGreaterThan(c.endValue, c.startValue, "结束改成 \(m) 分后不晚于开始")
         }
     }
 
@@ -80,7 +80,7 @@ final class ActualBlockWallClockEditTests: XCTestCase {
         b.setEndWallClock(1 * 60)
         XCTAssertEqual(b.endWallClockMinutes, 60)
         XCTAssertEqual(b.durationSeconds, 2 * 3600, accuracy: 1, "23:00→次日 01:00 应为 2 小时")
-        XCTAssertEqual(b.end.timeIntervalSince(b.start), 7200, accuracy: 1)
+        XCTAssertEqual(b.endValue.timeIntervalSince(b.startValue), 7200, accuracy: 1)
     }
 
     /// 已经跨夜的块，把结束改回当天：23:00–次日01:00 → 23:00–23:30。
@@ -111,7 +111,7 @@ final class ActualBlockWallClockEditTests: XCTestCase {
         // 同一瞬间在珀斯是 21:00 —— 证明我们没有用记录时区去解释
         var perthCal = Calendar(identifier: .gregorian)
         perthCal.timeZone = TimeZone(identifier: perth)!
-        XCTAssertEqual(perthCal.component(.hour, from: b.start), 21)
+        XCTAssertEqual(perthCal.component(.hour, from: b.startValue), 21)
     }
 
     func testForeignTimeZoneLabel() {
@@ -134,9 +134,9 @@ final class ActualBlockWallClockEditTests: XCTestCase {
                             timeZoneIdentifier: newYork, title: "t", source: .manual)
 
         b.setStartWallClock(2 * 60 + 30)
-        XCTAssertGreaterThan(b.end, b.start)
-        XCTAssertEqual(cal.component(.day, from: b.start), 8, "必须仍落在同一天")
-        let m = b.startWallClockMinutes
+        XCTAssertGreaterThan(b.endValue, b.startValue)
+        XCTAssertEqual(cal.component(.day, from: b.startValue), 8, "必须仍落在同一天")
+        let m = b.startWallClockMinutes ?? -1
         XCTAssertTrue((0..<1440).contains(m))
         XCTAssertGreaterThanOrEqual(m, 3 * 60, "不存在的 02:30 应被推到间隔之后，实际 \(m)")
     }
@@ -151,8 +151,8 @@ final class ActualBlockWallClockEditTests: XCTestCase {
 
         b.setStartWallClock(90)
         XCTAssertEqual(b.startWallClockMinutes, 90)
-        XCTAssertEqual(cal.component(.day, from: b.start), 1)
-        XCTAssertGreaterThan(b.end, b.start)
+        XCTAssertEqual(cal.component(.day, from: b.startValue), 1)
+        XCTAssertGreaterThan(b.endValue, b.startValue)
     }
 
     /// 编辑后的块经过一次 normalize（DayStore.mutate 的必经之路）不应丢失或错序。
@@ -182,15 +182,15 @@ extension ActualBlockWallClockEditTests {
     func testStartAt2400IsClampedAndBlockStaysOnSameDay() {
         var b = block(10, 0, 11, 0)
         let originalDay = Calendar(identifier: .gregorian).dateComponents(
-            in: TimeZone(identifier: perth)!, from: b.start).day
+            in: TimeZone(identifier: perth)!, from: b.startValue).day
 
         b.setStartWallClock(24 * 60)
 
         XCTAssertEqual(b.startWallClockMinutes, 23 * 60 + 59, "24:00 应被夹到 23:59")
         let newDay = Calendar(identifier: .gregorian).dateComponents(
-            in: TimeZone(identifier: perth)!, from: b.start).day
+            in: TimeZone(identifier: perth)!, from: b.startValue).day
         XCTAssertEqual(newDay, originalDay, "块不该跳到次日")
-        XCTAssertGreaterThan(b.end, b.start)
+        XCTAssertGreaterThan(b.endValue, b.startValue)
     }
 
     /// 结束仍然允许 24:00 —— 那是「干到当天末尾」，是真实意图。
@@ -209,4 +209,13 @@ extension ActualBlockWallClockEditTests {
         b.setStartWallClock(24 * 60)
         XCTAssertEqual(b.startWallClockMinutes, ps, "实际列的开始夹取必须和计划列一致")
     }
+}
+
+// MARK: - 测试辅助
+
+private extension ActualBlock {
+    /// 本文件里造的块两端都填齐了。取不到值说明被测代码把时间弄丢了，
+    /// 那本身就该让用例炸在这一行。
+    var startValue: Date { start! }
+    var endValue: Date { end! }
 }

@@ -13,12 +13,32 @@ final class DayStore: ObservableObject {
     @Published private(set) var usage: UsageDay?
     @Published private(set) var notice: Notice?
     @Published private(set) var isDirty = false
+    /// 手动导出的结果。见 `ExportReport` 的注释。
+    @Published private(set) var exportReport: ExportReport?
 
     struct Notice: Identifiable, Equatable {
         enum Level { case info, warning }
         let id = UUID()
         var level: Level
         var text: String
+    }
+
+    /// 手动点「导出」之后要当面说清楚的那件事。
+    ///
+    /// 为什么不复用顶部那条 `Notice`：导出是**用户主动按下去的一次动作**，
+    /// 他在等一个回执。横幅出现在视线之外、几秒后自己消失，等于没回。
+    /// 自动导出、监控提醒这类**系统自己发起**的消息仍然走横幅——
+    /// 那些没人在等，弹窗只会打断正在写字的人。
+    ///
+    /// 带上完整目录，是因为「导出到哪儿了」本身就是人点完之后最想知道的事。
+    struct ExportReport: Identifiable, Equatable {
+        enum Kind { case ok, warning }
+        let id = UUID()
+        var kind: Kind
+        var title: String
+        var message: String
+        /// 落盘的文件。有值时弹窗多给一个「在访达中显示」。
+        var file: URL?
     }
 
     private let store = FileStore.shared
@@ -149,7 +169,9 @@ final class DayStore: ObservableObject {
 
     // MARK: - 导出
 
-    func exportNow(silentWhenUnchanged: Bool = false) async {
+    /// - Parameter announcing: 人主动点了导出按钮，结果要用弹窗当面回执；
+    ///   自动导出走 false，只留一条横幅。
+    func exportNow(silentWhenUnchanged: Bool = false, announcing: Bool = false) async {
         let settings = settingsProvider()
         // 导出期间用户可能继续编辑或切日期 —— 记下身份，返回后核对。
         let exportedDate = record.key.date
@@ -179,27 +201,41 @@ final class DayStore: ObservableObject {
             }
         }
 
+        // 先把结论算出来，再决定是当面回执还是挂一条横幅 —— 同一套文案，两种送达方式。
+        let result: (level: Notice.Level, title: S, text: String, file: URL?)
         switch outcome {
         case .created(let u):
-            notice = Notice(level: .info, text: L(.noticeExported, u.lastPathComponent))
+            result = (.info, .exportTitleDone, L(.noticeExported, u.lastPathComponent), u)
         case .updated(let u):
-            notice = Notice(level: .info, text: L(.noticeUpdated, u.lastPathComponent))
+            result = (.info, .exportTitleDone, L(.noticeUpdated, u.lastPathComponent), u)
         case .updatedUnsynced(let u, let detail):
-            notice = Notice(level: .warning,
-                            text: L(.noticeUnsynced, u.lastPathComponent, detail))
+            result = (.warning, .exportTitleAttention,
+                      L(.noticeUnsynced, u.lastPathComponent, detail), u)
         case .unchanged(let u):
-            if !silentWhenUnchanged {
-                notice = Notice(level: .info, text: L(.noticeNoChange, u.lastPathComponent))
-            }
+            // 自动导出时「没变化」是噪音；人手动点的时候它是回答，必须说。
+            guard !silentWhenUnchanged || announcing else { return }
+            result = (.info, .exportTitleNoChange, L(.noticeNoChange, u.lastPathComponent), u)
         case .conflict(let u):
-            notice = Notice(level: .warning,
-                            text: L(.noticeConflict, u.lastPathComponent))
+            result = (.warning, .exportTitleAttention, L(.noticeConflict, u.lastPathComponent), u)
         case .failed(let msg):
-            notice = Notice(level: .warning, text: msg)
+            result = (.warning, .exportTitleFailed, msg, nil)
+        }
+
+        if announcing {
+            exportReport = ExportReport(kind: result.level == .warning ? .warning : .ok,
+                                        title: L(result.title),
+                                        message: result.file.map {
+                                            "\(result.text)\n\n\(L(.exportLocation, $0.deletingLastPathComponent().path))"
+                                        } ?? result.text,
+                                        file: result.file)
+        } else {
+            notice = Notice(level: result.level, text: result.text)
         }
     }
 
     func dismissNotice() { notice = nil }
+
+    func dismissExportReport() { exportReport = nil }
 
     func note(_ level: Notice.Level, _ text: String) {
         notice = Notice(level: level, text: text)

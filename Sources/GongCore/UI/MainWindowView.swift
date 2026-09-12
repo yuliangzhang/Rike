@@ -65,6 +65,23 @@ struct MainWindowView: View {
             }
         }
         .frame(minWidth: 940, minHeight: 680)
+        // 挂在窗口这一层，而不是「工字表」里：弹窗属于窗口，
+        // 挂在某个 tab 的子树上，那棵子树一旦被换掉，弹窗会跟着消失。
+        .alert(store.exportReport?.title ?? "",
+               isPresented: Binding(get: { store.exportReport != nil },
+                                    set: { if !$0 { store.dismissExportReport() } }),
+               presenting: store.exportReport) { report in
+            if let file = report.file {
+                // 点完导出，人最可能想做的下一件事就是去看看那个文件。
+                Button(L(.exportReveal)) {
+                    NSWorkspace.shared.activateFileViewerSelecting([file])
+                    store.dismissExportReport()
+                }
+            }
+            Button(L(.exportGotIt), role: .cancel) { store.dismissExportReport() }
+        } message: { report in
+            Text(report.message)
+        }
     }
 
     private func noticeBar(_ n: DayStore.Notice) -> some View {

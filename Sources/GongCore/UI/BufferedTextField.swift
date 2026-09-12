@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// 带本地缓冲的文本框。
 ///
@@ -66,66 +67,205 @@ struct BufferedTextField: View {
     }
 }
 
-/// 多行版本。理由同上：「触动 / 备注」是长文本，中文 IME 组合输入时
-/// 每个中间态都会替换整个 DayRecord，直接绑定模型容易光标跳动和输入抖动。
+/// 多行版本：手记那一横的「触动 / 明天会更好 / 备注」。
+///
+/// **为什么不能用 SwiftUI 的 `TextEditor`：**
+/// 拼音输入法在敲空格上屏之前，那串字母是以 **marked text**（未确认的组合文本）
+/// 挂在底层 NSTextView 上的，还不是文字。`TextEditor` 会把每一个中间态都写回
+/// binding，而这里的 binding 直通 `DayStore.mutate` —— 于是每敲一个字母就替换
+/// 整个 `DayRecord`、重建整棵视图树，SwiftUI 随后把字符串重新灌回文本视图，
+/// 组合中的 marked text 当场被清掉。表现就是**打着拼音，字自己退回去没了**。
+///
+/// 这也解释了为什么只有这三个字段犯病：全应用只有它们走 `TextEditor`，
+/// 其余输入框都是单行 `TextField`，SwiftUI 在那条路上没有这个回灌动作。
+///
+/// 修法是在**两端**都把组合期挡住，任一端单独成立都能止血，两端都做才是结构上封死：
+/// 1. `hasMarkedText()` 期间绝不往文本视图里写字符串；
+/// 2. `hasMarkedText()` 期间绝不向 store 提交 —— 半个拼音不是内容，
+///    它连一次视图重建都不值得触发。
 struct BufferedTextEditor: View {
     let contextID: String
     let value: String
     var hint: String = ""
     var minHeight: CGFloat = 56
-    /// 手记区用衬线；仪表区用无衬线。由调用方决定。
-    var font: Font = Theme.ui(Theme.Size.body)
-    var lineSpacing: CGFloat = 2
+    /// 手记区用衬线、大一档、行距松；仪表区用无衬线。
+    var serif: Bool = true
     let onChange: (String) -> Void
 
-    @State private var text: String = ""
-    @State private var primedContext: String?
-    @FocusState private var focused: Bool
+    /// 只跟踪「空不空」，不镜像全文：占位提示只在空↔非空翻转时才需要重画，
+    /// 逐字镜像等于每敲一个字就多一次 SwiftUI 重算，白费。
+    @State private var isEmpty: Bool = true
+    @State private var primedContext: String = ""
+    @State private var focused: Bool = false
+
+    private var nsFont: NSFont {
+        serif ? Theme.nsSerif(Theme.Size.bodyLarge) : Theme.nsUI(Theme.Size.body)
+    }
+    private var swiftUIFont: Font {
+        serif ? Theme.serif(Theme.Size.bodyLarge) : Theme.ui(Theme.Size.body)
+    }
+    private var lineSpacing: CGFloat { serif ? 6 : 2 }
 
     var body: some View {
-        TextEditor(text: $text)
-            .font(font)
-            .lineSpacing(lineSpacing)
-            .foregroundStyle(Theme.ink2)
+        IMESafeTextView(text: value,
+                        font: nsFont,
+                        lineSpacing: lineSpacing,
+                        textColor: Theme.nsInk2,
+                        onEdit: { newValue in
+                            isEmpty = newValue.isEmpty
+                            commit(newValue)
+                        },
+                        onFocusChange: { focused = $0 })
             .frame(minHeight: minHeight)
-            .scrollContentBackground(.hidden)
-            .focused($focused)
             .padding(8)
             .background(Theme.inset)
             .overlay(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall)
                         .strokeBorder(focused ? Theme.plan.opacity(0.5) : Theme.rule))
             .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.radiusSmall))
             .overlay(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text(hint).font(font).foregroundStyle(Theme.faint)
+                if isEmpty {
+                    Text(hint).font(swiftUIFont).foregroundStyle(Theme.faint)
                         .padding(.horizontal, 13).padding(.vertical, 14)
                         .allowsHitTesting(false)
                 }
             }
-            .onAppear { adopt() }
-            .onChange(of: contextID) { _, _ in adopt() }
-            .onChange(of: value) { _, newValue in
-                if !focused, newValue != text { text = newValue }
+            .onAppear {
+                primedContext = contextID
+                isEmpty = value.isEmpty
             }
-            .onChange(of: text) { _, newValue in
-                commit(newValue, requireFocus: true)
-            }
-            .onChange(of: focused) { _, isFocused in
-                if !isFocused { commit(text, requireFocus: false) }
-            }
-            // 同上：重建底层 NSTextView 以丢弃 undo 栈
+            // 换日时整块重建：底层 NSTextView 连同它自带的 undo 栈一起丢掉，
+            // 杜绝「在备注框里按 ⌘Z 把昨天的文字恢复进今天」。
             .id(contextID)
     }
 
-    private func adopt() {
-        text = value
-        primedContext = contextID
-    }
-
-    private func commit(_ newValue: String, requireFocus: Bool) {
+    /// 只接受与当前 context 匹配的提交。
+    ///
+    /// 视图被 `.id` 换掉的瞬间，AppKit 可能还会给**旧的**文本视图补发一次
+    /// 结束编辑通知；那一次回调带的是前一天的文字，而 `onChange` 闭包写的是
+    /// store 的当前记录 —— 不拦就是把昨天的内容盖进今天。
+    private func commit(_ newValue: String) {
         guard primedContext == contextID else { return }
-        guard !requireFocus || focused else { return }
         guard newValue != value else { return }
         onChange(newValue)
+    }
+}
+
+// MARK: - 组合输入安全的 NSTextView
+
+/// 会把焦点变化报出去的 NSTextView。
+///
+/// 不用 `textDidBeginEditing`：那个通知要等**第一次真正改动文本**才发，
+/// 点进来还没打字的那段时间边框不会亮，人会以为没点中。
+/// 第一响应者的进出才是「焦点」本身。
+private final class FocusReportingTextView: NSTextView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        // 不能同步改 SwiftUI 状态：这里正处在 AppKit 的响应者切换里，
+        // 同步回写会撞上「Modifying state during view update」。
+        if ok { DispatchQueue.main.async { [weak self] in self?.onFocusChange?(true) } }
+        return ok
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { DispatchQueue.main.async { [weak self] in self?.onFocusChange?(false) } }
+        return ok
+    }
+}
+
+private struct IMESafeTextView: NSViewRepresentable {
+    let text: String
+    let font: NSFont
+    let lineSpacing: CGFloat
+    let textColor: NSColor
+    let onEdit: (String) -> Void
+    let onFocusChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let tv = FocusReportingTextView()
+        tv.delegate = context.coordinator
+        tv.isRichText = false                    // 纯文本：导出的是 markdown，不要富文本属性
+        tv.allowsUndo = true
+        tv.drawsBackground = false               // 底色由 SwiftUI 的 Theme.inset 画
+        tv.textContainerInset = .zero
+        // 智能标点会把 "--" 换成 "–"、直引号换成弯引号。写进 markdown 就和敲的不一样了。
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.isAutomaticDashSubstitutionEnabled = false
+        tv.isAutomaticTextReplacementEnabled = false
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.minSize = NSSize(width: 0, height: 0)
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.autoresizingMask = [.width]
+        tv.textContainer?.widthTracksTextView = true
+        tv.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        tv.textStorage?.setAttributedString(NSAttributedString(string: text,
+                                                              attributes: attributes))
+        tv.typingAttributes = attributes
+
+        let scroll = NSScrollView()
+        scroll.documentView = tv
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let tv = scroll.documentView as? FocusReportingTextView else { return }
+        context.coordinator.parent = self
+        tv.onFocusChange = onFocusChange
+
+        // **第一道闸**：组合期一个字节都不要动。
+        // 往带 marked text 的 NSTextView 里写字符串，未上屏的拼音会被直接丢掉。
+        guard !tv.hasMarkedText() else { return }
+
+        if tv.typingAttributes[.font] as? NSFont != font
+            || tv.typingAttributes[.foregroundColor] as? NSColor != textColor {
+            tv.typingAttributes = attributes
+            tv.textStorage?.setAttributes(attributes,
+                                          range: NSRange(location: 0,
+                                                         length: tv.textStorage?.length ?? 0))
+        }
+
+        // 正在编辑时不回灌外部值 —— 否则会把人打到一半的内容冲掉。
+        // 换日这类真正需要换内容的场合，外层 `.id(contextID)` 会整块重建，走的是
+        // `makeNSView`，不依赖这条路。
+        guard tv.window?.firstResponder !== tv, tv.string != text else { return }
+        tv.textStorage?.setAttributedString(NSAttributedString(string: text,
+                                                               attributes: attributes))
+    }
+
+    private var attributes: [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        return [.font: font, .foregroundColor: textColor, .paragraphStyle: paragraph]
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: IMESafeTextView
+        init(_ parent: IMESafeTextView) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            // **第二道闸**：组合期不提交。
+            // 半个拼音不是内容，它不值得触发一次 store.mutate + 整树重建；
+            // 而那次重建正是把 marked text 冲掉的东西。
+            guard !tv.hasMarkedText() else { return }
+            parent.onEdit(tv.string)
+        }
+
+        /// 失焦补一次。到这里 AppKit 已经结束了组合（上屏或丢弃），
+        /// 覆盖「打完拼音直接点走」这条路径。
+        func textDidEndEditing(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            parent.onEdit(tv.string)
+        }
     }
 }
