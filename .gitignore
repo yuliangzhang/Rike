@@ -3,6 +3,7 @@ build/
 .DS_Store
 *.xcuserstate
 
-# codex 原始审查转录（每轮 1~6MB，含本机绝对路径）。
-# 已整理的结论留在 docs/_codex_review_*.md 里，那才是有信息量的部分。
-docs/_r*_stdout.log
+# 设计文档、验收清单、路线图、codex 审查留痕。
+# 这些是本人的工作底稿（含被否掉的方案、未公开的路线判断、本机绝对路径），
+# 留在本地，不进公开仓库。
+docs/

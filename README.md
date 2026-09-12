@@ -231,9 +231,8 @@ Sources/GongCore/     # 全部实现，可 @testable import
   App/                # AppDelegate、协调器      AppDelegate, coordinator
 Sources/Rike/         # 两行进程入口             two-line entry point
 Tests/GongCoreTests/  # 163 项测试               163 tests
-docs/DESIGN.md        # 设计文档与每条取舍的理由  design doc: every tradeoff, with reasons
-docs/ROADMAP.md       # 路线图                   roadmap
 prototype/            # HTML 视觉原型            HTML visual prototypes
+scripts/              # 构建、安装、配色核对       build, install, contrast check
 ```
 
 ## 许可 License
