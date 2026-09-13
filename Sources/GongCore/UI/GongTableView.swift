@@ -17,6 +17,7 @@ struct GongTableView: View {
     @State private var showDatePicker = false
     @State private var draggingTodo: UUID?
     @State private var dropTarget: UUID?
+    @State private var pendingActualStartFocus: String?
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case newTodo, newWin, todo(UUID), touched, freeText }
@@ -24,6 +25,7 @@ struct GongTableView: View {
     var body: some View {
         ScrollView { tableContent }
             .background(Theme.inset)
+            .onDisappear { pendingActualStartFocus = nil }
     }
 
     /// ScrollView 在 `ImageRenderer` 下不会布局内容，离屏渲染直接用这个。
@@ -319,6 +321,7 @@ struct GongTableView: View {
     /// 切日期前先收掉焦点：让正在编辑的输入框走失焦提交路径，
     /// 把内容落到**当前这一天**，而不是被 contextID 重置丢掉。
     private func resignFocusBeforeDayChange() {
+        pendingActualStartFocus = nil
         focusedField = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
@@ -528,7 +531,11 @@ struct GongTableView: View {
     private func actualTimeField(minutes: Int?, id: String,
                                  onCommit: @escaping (Int?) -> Void) -> some View {
         TimeEntryField(initial: minutes.map(GongTime.formatMinutes) ?? "",
-                       style: .actual, allowsBlank: true, onCommit: onCommit)
+                       style: .actual, allowsBlank: true,
+                       focusRequested: pendingActualStartFocus == id,
+                       onFocusHandled: {
+                           if pendingActualStartFocus == id { pendingActualStartFocus = nil }
+                       }, onCommit: onCommit)
             .id(id)
     }
 
@@ -560,9 +567,10 @@ struct GongTableView: View {
     /// 猜出来的值几乎每次都得先删掉再重填，等于凭空多一道手续。
     /// 空着反而诚实：时间还不知道，等他写。
     private func addActualManually() {
-        store.mutate { rec in
-            rec.actual.append(ActualBlock(title: "", source: .manual))
-        }
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        let block = ActualBlock(title: "", source: .manual)
+        pendingActualStartFocus = ctx("actualStart", block.id.uuidString)
+        store.mutate { $0.actual.append(block) }
     }
 
     /// 记录所属时区与当前系统时区不一致时，统计口径需要明说。
@@ -824,6 +832,8 @@ struct TimeEntryField: View {
     /// 允许留空／清空。只有「实际」列开放：那一列的时间是事后补的，
     /// 「还没填」是真实状态。计划列不开——那里留空没有意义，也不该改动它原有的行为。
     var allowsBlank: Bool = false
+    var focusRequested: Bool = false
+    var onFocusHandled: () -> Void = {}
     /// nil 表示「清空这一格」，只可能在 `allowsBlank` 时发生。
     let onCommit: (Int?) -> Void
 
@@ -834,6 +844,8 @@ struct TimeEntryField: View {
                               color: style == .plan ? Theme.nsPlan : Theme.nsActual,
                               placeholder: allowsBlank ? L(.timeBlank) : "",
                               allowsBlank: allowsBlank,
+                              focusRequested: focusRequested,
+                              onFocusHandled: onFocusHandled,
                               editing: $editing,
                               onCommit: onCommit)
             .frame(width: 52, height: 17)
@@ -892,6 +904,13 @@ struct TimeEntryField: View {
 
 /// 点进来就整段选中的文本框。
 final class ClickSelectsAllTextField: NSTextField {
+    var onWindowAttached: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onWindowAttached?() }
+    }
+
     /// 鼠标点击进入时全选。
     ///
     /// 关键在于时机：`super.mouseDown` 内部会一直跑到 mouseUp 才返回，
@@ -931,6 +950,8 @@ private struct SelectAllOnClickField: NSViewRepresentable {
     /// 是人从零敲进来的，所以既要允许还没敲、也要在敲的过程中给回位反馈；
     /// 计划列的时间是排计划时一次性带出来的默认值，两样都不需要，也不该动。
     let allowsBlank: Bool
+    let focusRequested: Bool
+    let onFocusHandled: () -> Void
     @Binding var editing: Bool
     /// nil = 清空这一格。
     let onCommit: (Int?) -> Void
@@ -948,6 +969,9 @@ private struct SelectAllOnClickField: NSViewRepresentable {
         tf.stringValue = initial
         tf.placeholderString = placeholder
         tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        tf.onWindowAttached = { [weak tf, weak coordinator = context.coordinator] in
+            if let tf { coordinator?.requestFocusIfNeeded(tf) }
+        }
         return tf
     }
 
@@ -960,13 +984,31 @@ private struct SelectAllOnClickField: NSViewRepresentable {
         if tf.currentEditor() == nil, tf.stringValue != initial {
             tf.stringValue = initial
         }
+        context.coordinator.requestFocusIfNeeded(tf)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: SelectAllOnClickField
+        private var focusScheduled = false
         init(_ parent: SelectAllOnClickField) { self.parent = parent }
+
+        func requestFocusIfNeeded(_ tf: NSTextField) {
+            guard parent.focusRequested, !focusScheduled else { return }
+            focusScheduled = true
+            // Wait until the inserted row is attached and SwiftUI has finished updating.
+            DispatchQueue.main.async { [weak self, weak tf] in
+                guard let self else { return }
+                self.focusScheduled = false
+                guard self.parent.focusRequested, let tf, tf.isEnabled,
+                      let window = tf.window,
+                      window.makeFirstResponder(tf) else { return }
+                tf.selectText(nil)
+                self.parent.onFocusHandled()
+            }
+        }
 
         /// 边打边过滤：挡住字母、多余的冒号和第 6 个字符。
         /// 否则要等失焦才发现解析失败、整段被还原，白打一遍。

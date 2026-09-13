@@ -108,6 +108,7 @@ struct BufferedTextEditor: View {
 
     var body: some View {
         IMESafeTextView(text: value,
+                        minimumHeight: minHeight,
                         font: nsFont,
                         lineSpacing: lineSpacing,
                         textColor: Theme.nsInk2,
@@ -157,8 +158,53 @@ struct BufferedTextEditor: View {
 /// 不用 `textDidBeginEditing`：那个通知要等**第一次真正改动文本**才发，
 /// 点进来还没打字的那段时间边框不会亮，人会以为没点中。
 /// 第一响应者的进出才是「焦点」本身。
-private final class FocusReportingTextView: NSTextView {
+final class FocusReportingTextView: NSTextView {
     var onFocusChange: ((Bool) -> Void)?
+    var minimumEditorHeight: CGFloat = 56
+
+    /// Measure the laid-out text, including the empty line after a trailing Return.
+    /// The outer page owns scrolling; this editor always exposes its full content.
+    func contentHeight(for width: CGFloat) -> CGFloat {
+        guard width > 0, let textStorage else { return 0 }
+        // SwiftUI may measure several widths before choosing one. Use a separate
+        // layout so measurement never resizes the live editor or disturbs its IME.
+        let storage = NSTextStorage(attributedString: textStorage)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(containerSize: NSSize(
+            width: max(1, width - textContainerInset.width * 2),
+            height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = textContainer?.lineFragmentPadding ?? 5
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+        layout.ensureLayout(for: container)
+        var bottom = layout.usedRect(for: container).maxY
+        if layout.extraLineFragmentTextContainer === container {
+            bottom = max(bottom, layout.extraLineFragmentRect.maxY)
+        }
+        return ceil(bottom + textContainerInset.height * 2)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: max(minimumEditorHeight, contentHeight(for: bounds.width)))
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let sizeChanged = newSize != frame.size
+        let widthChanged = newSize.width != frame.width
+        super.setFrameSize(newSize)
+        if widthChanged { invalidateIntrinsicContentSize() }
+        if sizeChanged, window?.firstResponder === self {
+            // Reveal the caret through the page's scroll view after its layout catches up.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window, window.firstResponder === self else { return }
+                let selection = self.selectedRange()
+                let screenRect = self.firstRect(forCharacterRange: NSRange(location: selection.location, length: 0),
+                                                actualRange: nil)
+                let caretRect = self.convert(window.convertFromScreen(screenRect), from: nil)
+                self.scrollToVisible(caretRect.insetBy(dx: 0, dy: -8))
+            }
+        }
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -177,14 +223,16 @@ private final class FocusReportingTextView: NSTextView {
 
 private struct IMESafeTextView: NSViewRepresentable {
     let text: String
+    let minimumHeight: CGFloat
     let font: NSFont
     let lineSpacing: CGFloat
     let textColor: NSColor
     let onEdit: (String) -> Void
     let onFocusChange: (Bool) -> Void
 
-    func makeNSView(context: Context) -> NSScrollView {
+    func makeNSView(context: Context) -> FocusReportingTextView {
         let tv = FocusReportingTextView()
+        tv.minimumEditorHeight = minimumHeight
         tv.delegate = context.coordinator
         tv.isRichText = false                    // 纯文本：导出的是 markdown，不要富文本属性
         tv.allowsUndo = true
@@ -194,35 +242,36 @@ private struct IMESafeTextView: NSViewRepresentable {
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
-        tv.isVerticallyResizable = true
+        // SwiftUI sizes the complete editor; NSTextView must not resize itself to a single line.
+        tv.isVerticallyResizable = false
         tv.isHorizontallyResizable = false
-        tv.minSize = NSSize(width: 0, height: 0)
+        tv.minSize = NSSize(width: 0, height: minimumHeight)
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         tv.autoresizingMask = [.width]
+        tv.textContainer?.heightTracksTextView = false
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         tv.textStorage?.setAttributedString(NSAttributedString(string: text,
                                                               attributes: attributes))
         tv.typingAttributes = attributes
 
-        let scroll = NSScrollView()
-        scroll.documentView = tv
-        scroll.borderType = .noBorder
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = false
-        scroll.autohidesScrollers = true
-        return scroll
+        return tv
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let tv = scroll.documentView as? FocusReportingTextView else { return }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: FocusReportingTextView,
+                      context: Context) -> NSSize? {
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+        return NSSize(width: width, height: max(minimumHeight, nsView.contentHeight(for: width)))
+    }
+
+    func updateNSView(_ tv: FocusReportingTextView, context: Context) {
         context.coordinator.parent = self
         tv.onFocusChange = onFocusChange
 
         // **第一道闸**：组合期一个字节都不要动。
         // 往带 marked text 的 NSTextView 里写字符串，未上屏的拼音会被直接丢掉。
         guard !tv.hasMarkedText() else { return }
+        defer { tv.invalidateIntrinsicContentSize() }
 
         if tv.typingAttributes[.font] as? NSFont != font
             || tv.typingAttributes[.foregroundColor] as? NSColor != textColor {
@@ -248,12 +297,14 @@ private struct IMESafeTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: IMESafeTextView
         init(_ parent: IMESafeTextView) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
+            tv.invalidateIntrinsicContentSize()
             // **第二道闸**：组合期不提交。
             // 半个拼音不是内容，它不值得触发一次 store.mutate + 整树重建；
             // 而那次重建正是把 marked text 冲掉的东西。
